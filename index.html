@@ -161,6 +161,7 @@
       box-sizing: border-box;
       user-select: none;
       cursor: default;
+      border-top: 1px solid #ddd;
     }
     ::-webkit-scrollbar {
       width: 32px;
@@ -169,7 +170,7 @@
 </head>
 <body onclick="closeMenu(event)">
   <div id="menu" onclick="toggleMenu(event)">☰</div>
-  <div id="version">0.011</div>
+  <div id="version">v0.012</div>
   <div id="menuDropdown">
     <button onclick="newList()">+ New List</button>
     <button onclick="clearAllCheckboxes()">Clear Checkboxes</button>
@@ -308,6 +309,23 @@
         alert("List deletion cancelled.");
       }
     }
+    function deleteListByName(name) {
+      const confirmation = prompt(`Type 'delete' to confirm deletion of list "${name}":`);
+      if (confirmation === "delete") {
+        let lists = getLists().filter(l => l !== name);
+        saveLists(lists);
+        localStorage.removeItem(`items_${name}`);
+        if (currentList === name) {
+          currentList = lists.length > 0 ? lists[0] : "Default List";
+          localStorage.setItem("currentList", currentList);
+          document.getElementById("listTitle").innerText = currentList;
+          renderItems();
+        }
+        loadLists();
+      } else {
+        alert("List deletion cancelled.");
+      }
+    }
     function startListDeleteTimer() {
       listDeleteTimer = setTimeout(() => {
         deleteList();
@@ -342,11 +360,34 @@
       const listSelector = document.getElementById("listSelector");
       listSelector.innerHTML = "";
       getLists().forEach(name => {
+        const container = document.createElement("div");
+        container.style.display = "flex";
+        container.style.justifyContent = "space-between";
+        container.style.alignItems = "center";
+        container.style.marginBottom = "5px";
+
         const btn = document.createElement("button");
         btn.textContent = name;
-        btn.style.display = "block";
+        btn.style.flex = "1";
+        btn.style.textAlign = "left";
         btn.onclick = () => switchList(name);
-        listSelector.appendChild(btn);
+
+        const deleteBtn = document.createElement("button");
+        deleteBtn.textContent = "✖";
+        deleteBtn.style.color = "red";
+        deleteBtn.style.fontWeight = "bold";
+        deleteBtn.style.border = "none";
+        deleteBtn.style.background = "none";
+        deleteBtn.style.cursor = "pointer";
+        deleteBtn.style.marginLeft = "5px";
+        deleteBtn.onclick = (e) => {
+          e.stopPropagation();
+          deleteListByName(name);
+        };
+
+        container.appendChild(btn);
+        container.appendChild(deleteBtn);
+        listSelector.appendChild(container);
       });
     }
 
@@ -489,7 +530,7 @@
       draggedItemIndex = null;
     }
 
-    // Global Flick Detection for Adding Items
+    // Global Flick Detection for Adding Items on Item List Container
     const itemListContainer = document.getElementById("itemList");
     itemListContainer.addEventListener("touchstart", function(e) {
       if (e.target === this) {
@@ -611,11 +652,33 @@
         };
         itemList.appendChild(li);
       });
+      // Footer Element: "LISTER 🐱"
       const footer = document.createElement("li");
       footer.className = "footer-bar";
-      footer.style.border = "none";
       footer.innerText = "LISTER 🐱";
       itemList.appendChild(footer);
+      
+      // Add touch events to footer for right flick to insert new item
+      footer.addEventListener("touchstart", function(e) {
+        this.dataset.startX = e.touches[0].clientX;
+        this.dataset.startY = e.touches[0].clientY;
+        this.dataset.touchStartTime = Date.now();
+      });
+      footer.addEventListener("touchmove", function(e) {
+        // No drag functionality for footer.
+      });
+      footer.addEventListener("touchend", function(e) {
+        const currentTime = Date.now();
+        const startX = parseFloat(this.dataset.startX || 0);
+        const touch = e.changedTouches[0];
+        const elapsed = currentTime - parseInt(this.dataset.touchStartTime || currentTime);
+        const deltaX = touch.clientX - startX;
+        if (deltaX > 50 && elapsed < 300) {
+          // Insert new item at the end of the list
+          const index = getItems().length;
+          insertNewItem(index);
+        }
+      });
     }
 
     // List Title Touch Handling
