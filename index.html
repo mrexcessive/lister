@@ -80,6 +80,13 @@
       user-select: none;
       touch-action: none;
     }
+    /* Drag handle styling */
+    .drag-handle {
+      font-size: 20px;
+      padding: 0 5px;
+      cursor: grab;
+      user-select: none;
+    }
     .undo-btn {
       display: none;
       background: orange;
@@ -144,9 +151,9 @@
     let previousCheckboxState = null;
     let listDeleteTimer = null;
     let itemDeleteTimer = null;
+    // Mobile drag variables (for drag-handle only)
     let mobileDragTimer = null;
     let mobileDraggingIndex = null;
-    let mobileDragStartY = 0;
 
     // Initialize title, lists, and items
     document.getElementById("listTitle").innerText = currentList;
@@ -193,7 +200,7 @@
     function loadListFromText() {
       const text = document.getElementById("loadListInput").value;
       if (text) {
-        // Split lines, trim, and ignore blank ones
+        // Split lines, trim, and ignore blank lines
         const items = text.split("\n")
           .map(line => line.trim())
           .filter(line => line.length > 0)
@@ -353,20 +360,16 @@
     }
 
     // ---------------------------
-    // Mobile Drag-and-drop Simulation
+    // Mobile Drag-and-drop (via drag-handle)
     // ---------------------------
-    function handleTouchStart(e, index) {
-      e.preventDefault();
-      // Only initiate drag if not touching the text (which has its own handlers)
-      if (e.target.tagName !== "SPAN") {
-        mobileDragTimer = setTimeout(() => {
-          mobileDraggingIndex = index;
-          mobileDragStartY = e.touches[0].clientY;
-          e.currentTarget.classList.add("dragging");
-        }, 1000);
-      }
+    function handleDragTouchStart(e, index) {
+      // Start drag after a short delay (500ms)
+      mobileDragTimer = setTimeout(() => {
+        mobileDraggingIndex = index;
+        e.currentTarget.parentElement.classList.add("dragging");
+      }, 500);
     }
-    function handleTouchEnd(e, index) {
+    function handleDragTouchEnd(e, index) {
       clearTimeout(mobileDragTimer);
       if (mobileDraggingIndex !== null) {
         let touch = e.changedTouches[0];
@@ -384,13 +387,16 @@
           items.splice(dropIndex, 0, movedItem);
           saveItems(items);
           renderItems();
+        } else {
+          // Remove dragging class if drop did not change position
+          e.currentTarget.parentElement.classList.remove("dragging");
         }
         mobileDraggingIndex = null;
       }
     }
 
     // ---------------------------
-    // Render Items with Drag, Edit, and Delete (using custom double-tap and long-press)
+    // Render Items with Drag, Edit, Delete and Row Highlighting
     // ---------------------------
     function renderItems() {
       const itemList = document.getElementById("itemList");
@@ -403,10 +409,18 @@
         li.ondragover = handleDragOver;
         li.ondrop = (e) => handleDrop(e, index);
         li.ondragend = handleDragEnd;
-        li.ontouchstart = (e) => handleTouchStart(e, index);
-        li.ontouchend = (e) => handleTouchEnd(e, index);
+        // Set background color if item is checked
+        li.style.background = item.checked ? "#d0eaff" : "#fff";
 
-        // Checkbox (click stops propagation)
+        // Create drag-handle element (for mobile dragging)
+        const dragHandle = document.createElement("span");
+        dragHandle.className = "drag-handle";
+        dragHandle.innerText = "≡";
+        dragHandle.style.marginRight = "8px";
+        dragHandle.addEventListener("touchstart", (e) => handleDragTouchStart(e, index));
+        dragHandle.addEventListener("touchend", (e) => handleDragTouchEnd(e, index));
+
+        // Checkbox (clicking stops propagation so that it doesn't trigger drag)
         const checkbox = document.createElement("input");
         checkbox.type = "checkbox";
         checkbox.checked = item.checked;
@@ -418,7 +432,7 @@
         // Item text span: custom double-tap to edit, long-press (3 sec) to delete.
         const span = document.createElement("span");
         span.textContent = item.text;
-        // Custom double-tap detection on mobile
+        // Custom double-tap detection on mobile for editing
         span.addEventListener("touchend", function (e) {
           e.preventDefault();
           let currentTime = new Date().getTime();
@@ -430,7 +444,7 @@
           this.dataset.lastTap = currentTime;
           clearTimeout(itemDeleteTimer);
         });
-        // Long-press (3 sec) to delete item
+        // Long-press on item text to delete
         span.addEventListener("touchstart", function (e) {
           e.preventDefault();
           itemDeleteTimer = setTimeout(() => {
@@ -448,6 +462,7 @@
           editItem(index);
         };
 
+        li.appendChild(dragHandle);
         li.appendChild(checkbox);
         li.appendChild(span);
         itemList.appendChild(li);
@@ -455,7 +470,7 @@
     }
 
     // ---------------------------
-    // List title events: custom double-tap to edit, long-press (3 sec) to delete list
+    // List title events: double-tap to edit, long-press (3 sec) to delete list
     // ---------------------------
     const listTitle = document.getElementById("listTitle");
     listTitle.addEventListener("touchend", function (e) {
@@ -467,6 +482,7 @@
         editListName();
       }
       this.dataset.lastTap = currentTime;
+      clearTimeout(listDeleteTimer);
     });
     listTitle.addEventListener("touchstart", function (e) {
       e.preventDefault();
