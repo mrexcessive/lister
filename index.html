@@ -2,8 +2,8 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <!-- Allow zooming during editing; we will force reset after editing -->
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=3.0" />
+  <!-- Prevent auto-zoom by locking viewport scaling -->
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
   <title>Multi-List App</title>
   <style>
     body {
@@ -13,9 +13,8 @@
       text-align: center;
       padding: 10px;
       position: relative;
-      -webkit-touch-callout: none; /* disable callout, etc. */
+      -webkit-touch-callout: none;
     }
-    /* Version number styling */
     #version {
       position: absolute;
       top: 10px;
@@ -23,7 +22,6 @@
       font-size: 10px;
       color: #888;
     }
-    /* Menu styles */
     #menu {
       position: absolute;
       top: 10px;
@@ -44,7 +42,6 @@
       width: 200px;
       z-index: 100;
     }
-    /* Header for list title and load button */
     #listHeader {
       display: flex;
       align-items: center;
@@ -70,7 +67,6 @@
       padding: 0;
       margin: 0;
     }
-    /* List items – allow vertical panning */
     li {
       display: flex;
       align-items: center;
@@ -85,29 +81,24 @@
       touch-action: pan-y;
       transition: transform 0.1s;
     }
-    /* Visual indication for dragging mode */
     .dragging-active {
       border: 2px solid red;
       opacity: 0.9;
     }
-    /* Placeholder style for drag */
     .drag-placeholder {
       background: #f0f0f0;
       border: 2px dashed #aaa;
     }
-    /* Container for checkbox and text label */
     .item-content {
       display: flex;
       align-items: center;
       flex: 1;
     }
-    /* Minimal width for checkbox */
     li input[type="checkbox"] {
       flex: 0 0 auto;
       margin: 0;
       padding: 0;
     }
-    /* Item text styling */
     .item-text {
       flex: 1;
       padding: 0 10px;
@@ -125,7 +116,6 @@
       padding: 5px;
       margin-top: 10px;
     }
-    /* Popup for loading a list from text */
     #loadListPopup {
       display: none;
       position: fixed;
@@ -143,7 +133,6 @@
       padding: 10px;
       box-sizing: border-box;
     }
-    /* Custom delete confirmation popup */
     #deleteConfirmPopup {
       display: none;
       position: fixed;
@@ -163,7 +152,6 @@
       color: #666;
       margin: 5px 0 10px;
     }
-    /* Footer bar style */
     .footer-bar {
       background: #eee;
       text-align: center;
@@ -174,7 +162,6 @@
       user-select: none;
       cursor: default;
     }
-    /* Increase scrollbar sensitive area (WebKit only) */
     ::-webkit-scrollbar {
       width: 32px;
     }
@@ -182,78 +169,45 @@
 </head>
 <body onclick="closeMenu(event)">
   <div id="menu" onclick="toggleMenu(event)">☰</div>
-  <!-- Updated version number -->
-  <div id="version">0.010</div>
-
+  <div id="version">0.011</div>
   <div id="menuDropdown">
     <button onclick="newList()">+ New List</button>
     <button onclick="clearAllCheckboxes()">Clear Checkboxes</button>
     <div id="listSelector"></div>
   </div>
-
-  <!-- Header: List title and load button -->
   <div id="listHeader">
     <h2 id="listTitle">My List</h2>
     <button id="loadBtn" onclick="showLoadListPopup()">load</button>
   </div>
-
-  <!-- The add-item input has been removed; new items are added by flicking right -->
   <ul id="itemList"></ul>
   <button id="undoBtn" class="undo-btn" onclick="undoClearCheckboxes()">Undo</button>
-
   <div id="loadListPopup">
     <textarea id="loadListInput" placeholder="Paste list here (one item per line)" rows="5"></textarea><br>
     <button onclick="loadListFromText()">Load</button>
     <button onclick="hideLoadListPopup()">Cancel</button>
   </div>
-  
-  <!-- Custom Delete Confirmation Popup -->
   <div id="deleteConfirmPopup">
     <p id="deleteConfirmText" style="font-weight: bold;">Delete this item?</p>
     <p id="deleteItemText"></p>
     <button onclick="confirmDelete(true)">Delete</button>
     <button onclick="confirmDelete(false)">Cancel</button>
   </div>
-
   <script>
-    /* ================================
-       Global Variables and Initialization
-       ================================ */
+    // Global Variables
     let currentList = localStorage.getItem("currentList") || "Default List";
     let previousCheckboxState = null;
     let listDeleteTimer = null;
-    let itemDeleteTimer = null;
-    // For in-place editing – ensure only one input active at once.
     let currentEditingInput = null;
-    // For drag-and-drop via long press:
     let draggedItemIndex = null;
     let draggedElement = null;
     let dragPlaceholder = null;
+    let pendingDeleteIndex = null;
 
-    // Initialize title, lists, and items.
     document.getElementById("listTitle").innerText = currentList;
     loadLists();
     renderItems();
 
-    /* ================================
-       Utility: Reset Zoom
-       ================================ */
-    function resetZoom() {
-      // Remove the existing viewport meta tag.
-      let viewport = document.querySelector("meta[name=viewport]");
-      if (viewport) {
-        viewport.parentNode.removeChild(viewport);
-      }
-      // Create a new viewport meta tag with fixed scale.
-      let meta = document.createElement("meta");
-      meta.name = "viewport";
-      meta.content = "width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no";
-      document.getElementsByTagName("head")[0].appendChild(meta);
-    }
-
-    /* ================================
-       Menu and List Management Functions
-       ================================ */
+    // Menu and List Functions
     function toggleMenu(event) {
       event.stopPropagation();
       const menu = document.getElementById("menuDropdown");
@@ -299,7 +253,6 @@
       renderItems();
       loadLists();
     }
-    // In-place editing for the list title.
     function editListTitle() {
       if (currentEditingInput) currentEditingInput.blur();
       const listTitleElement = document.getElementById("listTitle");
@@ -307,7 +260,7 @@
       const input = document.createElement("input");
       input.type = "text";
       input.value = originalTitle;
-      input.style.fontSize = "22px";
+      input.style.fontSize = "22px"; // Use a large font to prevent auto-zoom
       input.style.textAlign = "center";
       input.onkeydown = function(e) {
         if (e.key === "Enter") {
@@ -315,7 +268,6 @@
         }
       };
       input.onblur = function() {
-        resetZoom();
         const newTitle = input.value.trim();
         if (newTitle === "") {
           listTitleElement.innerText = originalTitle;
@@ -340,9 +292,6 @@
       currentEditingInput = input;
       document.getElementById("listHeader").replaceChild(input, listTitleElement);
       input.focus();
-    }
-    function editListName() {
-      editListTitle();
     }
     function deleteList() {
       const confirmation = prompt(`Type 'confirm' to delete the list "${currentList}":`);
@@ -401,9 +350,7 @@
       });
     }
 
-    /* ================================
-       Item Management Functions
-       ================================ */
+    // Item Management Functions
     function getItems() {
       return JSON.parse(localStorage.getItem(`items_${currentList}`)) || [];
     }
@@ -416,7 +363,6 @@
       saveItems(items);
       renderItems();
     }
-    // In-place editing for an item.
     function editItem(index, labelElement) {
       if (currentEditingInput) currentEditingInput.blur();
       const items = getItems();
@@ -425,14 +371,13 @@
       input.type = "text";
       input.value = originalText;
       input.style.flex = "1";
-      input.style.fontSize = "16px";
+      input.style.fontSize = "16px"; // Ensure minimum 16px to prevent auto-zoom
       input.onkeydown = function(e) {
         if (e.key === "Enter") {
           input.blur();
         }
       };
       input.onblur = function() {
-        resetZoom();
         const newText = input.value.trim();
         if (newText === "") {
           if (originalText === "") {
@@ -448,7 +393,6 @@
         currentEditingInput = null;
       };
       currentEditingInput = input;
-      // Replace the label element with the input.
       labelElement.parentElement.replaceChild(input, labelElement);
       input.focus();
     }
@@ -470,7 +414,6 @@
       pendingDeleteIndex = null;
       document.getElementById("deleteConfirmPopup").style.display = "none";
     }
-    // Insert a new (empty) item at the given index and immediately start editing it.
     function insertNewItem(index) {
       let items = getItems();
       items.splice(index, 0, { text: "", checked: false });
@@ -487,39 +430,27 @@
       }, 0);
     }
 
-    /* ================================
-       Long-Press Drag-and-Drop (No Drag Handle)
-       ================================ */
-    // Global variables for drag-and-drop:
-    let pendingDeleteIndex = null; // already used above
-    // startDrag creates a floating clone and a placeholder.
+    // Drag-and-Drop Functions
     function startDrag(li, index) {
       li.isDragging = true;
       draggedItemIndex = index;
       let rect = li.getBoundingClientRect();
-      // Create a floating clone of the li.
       draggedElement = li.cloneNode(true);
       draggedElement.style.position = "absolute";
       draggedElement.style.top = (rect.top + window.scrollY) + "px";
       draggedElement.style.left = (rect.left + window.scrollX) + "px";
       draggedElement.style.width = rect.width + "px";
       draggedElement.classList.add("dragging-active");
-      // Disable text selection on the clone.
       draggedElement.style.pointerEvents = "none";
       document.body.appendChild(draggedElement);
-      // Create a placeholder with the same height.
       dragPlaceholder = document.createElement("li");
       dragPlaceholder.classList.add("drag-placeholder");
       dragPlaceholder.style.height = rect.height + "px";
-      // Replace li with placeholder in the list.
       li.parentElement.replaceChild(dragPlaceholder, li);
     }
-    // updateDrag continuously repositions the floating element and repositions the placeholder.
     function updateDrag(touch) {
-      // Prevent text selection and scrolling while dragging.
       event.preventDefault();
       draggedElement.style.top = (touch.clientY + window.scrollY - draggedElement.offsetHeight/2) + "px";
-      // Recalculate the drop index based on current touch Y.
       const itemList = document.getElementById("itemList");
       const listItems = Array.from(itemList.querySelectorAll("li:not(.footer-bar):not(.drag-placeholder)"));
       let newIndex = 0;
@@ -531,7 +462,6 @@
         }
         newIndex = i + 1;
       }
-      // Move the placeholder if needed.
       let currentPlaceholderIndex = Array.from(itemList.children).indexOf(dragPlaceholder);
       if (newIndex !== currentPlaceholderIndex) {
         itemList.removeChild(dragPlaceholder);
@@ -542,7 +472,6 @@
         }
       }
     }
-    // endDrag finalizes the drop: removes floating element, updates the array, and re-renders.
     function endDrag(touch) {
       if (draggedElement) {
         document.body.removeChild(draggedElement);
@@ -552,7 +481,6 @@
       let dropIndex = Array.from(itemList.children).indexOf(dragPlaceholder);
       itemList.removeChild(dragPlaceholder);
       dragPlaceholder = null;
-      // Update array: remove item from draggedItemIndex and insert at dropIndex.
       let items = getItems();
       let [movedItem] = items.splice(draggedItemIndex, 1);
       items.splice(dropIndex, 0, movedItem);
@@ -561,9 +489,7 @@
       draggedItemIndex = null;
     }
 
-    /* ================================
-       Global Flick Detection on the List Container (for adding items)
-       ================================ */
+    // Global Flick Detection for Adding Items
     const itemListContainer = document.getElementById("itemList");
     itemListContainer.addEventListener("touchstart", function(e) {
       if (e.target === this) {
@@ -604,9 +530,7 @@
       return touchY > centerY ? closestIndex + 1 : closestIndex;
     }
 
-    /* ================================
-       Render Items and Attach Touch Listeners
-       ================================ */
+    // Render Items
     function renderItems() {
       const itemList = document.getElementById("itemList");
       itemList.innerHTML = "";
@@ -615,7 +539,6 @@
         const li = document.createElement("li");
         li.style.background = item.checked ? "#d0eaff" : "#fff";
         li.draggable = false;
-        // Create content container (checkbox and label)
         const contentDiv = document.createElement("div");
         contentDiv.className = "item-content";
         const checkbox = document.createElement("input");
@@ -631,19 +554,15 @@
         contentDiv.appendChild(checkbox);
         contentDiv.appendChild(span);
         li.appendChild(contentDiv);
-
-        // Attach touch listeners for gesture handling and long-press drag.
         li.addEventListener("touchstart", function(e) {
           this.dataset.startX = e.touches[0].clientX;
           this.dataset.startY = e.touches[0].clientY;
           this.dataset.touchStartTime = Date.now();
-          // Set a long-press timer for dragging.
           this.dragTimeout = setTimeout(() => {
             startDrag(this, index);
           }, 500);
         });
         li.addEventListener("touchmove", function(e) {
-          // If dragging, update drag position.
           if (this.isDragging) {
             updateDrag(e.touches[0]);
             return;
@@ -658,7 +577,6 @@
         });
         li.addEventListener("touchend", function(e) {
           clearTimeout(this.dragTimeout);
-          // If this li is in dragging mode, finalize the drag.
           if (this.isDragging) {
             endDrag(e.changedTouches[0]);
             this.isDragging = false;
@@ -693,7 +611,6 @@
         };
         itemList.appendChild(li);
       });
-      // Append footer bar.
       const footer = document.createElement("li");
       footer.className = "footer-bar";
       footer.style.border = "none";
@@ -701,9 +618,7 @@
       itemList.appendChild(footer);
     }
 
-    /* ================================
-       List Title Touch Handling
-       ================================ */
+    // List Title Touch Handling
     const listTitle = document.getElementById("listTitle");
     listTitle.addEventListener("touchstart", function (e) {
       e.preventDefault();
