@@ -58,7 +58,7 @@
       display: flex;
       align-items: center;
       justify-content: space-between;
-      margin: 10px 0;
+      margin: 20px 0 10px 0; /* increased top margin to 20px */
     }
     h2 {
       margin: 0;
@@ -190,7 +190,7 @@
   </div>
   <div id="listHeader">
     <h2 id="listTitle">My List</h2>
-    <button id="loadBtn" onclick="showLoadListPopup()">load</button>
+    <button id="importBtn" onclick="showLoadListPopup()">import</button>
   </div>
   <ul id="itemList"></ul>
   <button id="undoBtn" class="undo-btn" onclick="undoClearCheckboxes()">Undo</button>
