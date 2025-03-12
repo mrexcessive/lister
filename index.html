@@ -6,6 +6,18 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
   <title>Multi-List App</title>
   <style>
+    html, body {
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+    user-select: none;
+    }
+    input, textarea {
+    -webkit-user-select: text;
+    -moz-user-select: text;
+    -ms-user-select: text;
+    user-select: text;
+    }
     body {
       font-family: Arial, sans-serif;
       max-width: 400px;
@@ -170,7 +182,7 @@
 </head>
 <body onclick="closeMenu(event)">
   <div id="menu" onclick="toggleMenu(event)">☰</div>
-  <div id="version">v0.012</div>
+  <div id="version">v0.013</div>
   <div id="menuDropdown">
     <button onclick="newList()">+ New List</button>
     <button onclick="clearAllCheckboxes()">Clear Checkboxes</button>
@@ -436,6 +448,7 @@
       currentEditingInput = input;
       labelElement.parentElement.replaceChild(input, labelElement);
       input.focus();
+      input.setSelectionRange(input.value.length, input.value.length);
     }
     function showDeleteConfirm(index) {
       pendingDeleteIndex = index;
