@@ -42,12 +42,20 @@
       width: 200px;
       z-index: 100;
     }
-    input[type="text"] {
-      width: 80%;
-      padding: 10px;
-      font-size: 16px;
-      border: 1px solid #ccc;
-      margin-bottom: 10px;
+    /* Header for list title and load button */
+    #listHeader {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin: 10px 0;
+    }
+    h2 {
+      margin: 0;
+      font-size: 22px;
+      cursor: pointer;
+      user-select: none;
+      -webkit-user-select: none;
+      touch-action: none;
     }
     button {
       padding: 8px 12px;
@@ -139,14 +147,6 @@
       padding: 10px;
       box-sizing: border-box;
     }
-    h2 {
-      margin: 10px 0;
-      font-size: 22px;
-      cursor: pointer;
-      user-select: none;
-      -webkit-user-select: none;
-      touch-action: none;
-    }
     /* Custom delete confirmation popup */
     #deleteConfirmPopup {
       display: none;
@@ -169,23 +169,27 @@
     }
     /* Increase scrollbar sensitive area (WebKit only) */
     ::-webkit-scrollbar {
-      width: 32px; /* Twice the normal width (assuming default is ~16px) */
+      width: 32px;
     }
   </style>
 </head>
 <body onclick="closeMenu(event)">
   <div id="menu" onclick="toggleMenu(event)">☰</div>
-  <div id="version">0.003</div> <!-- Updated version number -->
+  <div id="version">0.004</div> <!-- Updated version number -->
+
   <div id="menuDropdown">
     <button onclick="newList()">+ New List</button>
-    <button onclick="showLoadListPopup()">+ Load List</button>
     <button onclick="clearAllCheckboxes()">Clear Checkboxes</button>
     <div id="listSelector"></div>
   </div>
 
-  <h2 id="listTitle">My List</h2>
-  <input type="text" id="itemInput" placeholder="Add new item..." />
-  <button onclick="addItem()">Add</button>
+  <!-- Header: List title and new load button -->
+  <div id="listHeader">
+    <h2 id="listTitle">My List</h2>
+    <button id="loadBtn" onclick="showLoadListPopup()">load</button>
+  </div>
+
+  <!-- (Add-item input removed as new items are created by flicking right) -->
   <ul id="itemList"></ul>
   <button id="undoBtn" class="undo-btn" onclick="undoClearCheckboxes()">Undo</button>
 
@@ -221,14 +225,6 @@
     loadLists();
     renderItems();
 
-    // Add item on Enter key
-    document.getElementById("itemInput").addEventListener("keypress", function (event) {
-      if (event.key === "Enter") {
-        event.preventDefault();
-        addItem();
-      }
-    });
-
     // ---------------------------
     // Menu and List management
     // ---------------------------
@@ -261,7 +257,6 @@
     function loadListFromText() {
       const text = document.getElementById("loadListInput").value;
       if (text) {
-        // Split lines, trim, and ignore blank lines
         const items = text.split("\n")
           .map(line => line.trim())
           .filter(line => line.length > 0)
@@ -287,7 +282,6 @@
         if (index !== -1) {
           lists[index] = newName;
           saveLists(lists);
-          // Migrate stored items to new key
           localStorage.setItem(`items_${newName}`, localStorage.getItem(`items_${currentList}`));
           localStorage.removeItem(`items_${currentList}`);
           switchList(newName);
@@ -354,16 +348,7 @@
     // ---------------------------
     // Item management functions
     // ---------------------------
-    function addItem() {
-      const input = document.getElementById("itemInput");
-      const text = input.value.trim();
-      if (text === "") return;
-      const items = getItems();
-      items.push({ text, checked: false });
-      saveItems(items);
-      input.value = "";
-      renderItems();
-    }
+    // (The addItem() function and input box have been removed.)
     function getItems() {
       return JSON.parse(localStorage.getItem(`items_${currentList}`)) || [];
     }
@@ -376,16 +361,43 @@
       saveItems(items);
       renderItems();
     }
-    function editItem(index) {
+    // In-place editing for items (for both double-click and flick-right new item)
+    function editItem(index, spanElement) {
       const items = getItems();
-      const newText = prompt("Edit item:", items[index].text);
-      if (newText !== null && newText.trim() !== "") {
-        items[index].text = newText.trim();
-        saveItems(items);
-        renderItems();
+      const li = spanElement.parentElement.parentElement;
+      const input = document.createElement("input");
+      input.type = "text";
+      input.value = items[index].text;
+      input.style.flex = "1";
+      input.onkeydown = function(e) {
+        if (e.key === "Enter") {
+          finishEditing();
+        }
+      };
+      input.onblur = finishEditing;
+      
+      function finishEditing() {
+        const newText = input.value.trim();
+        // If editing a new (empty) item and the user leaves it empty, remove it.
+        if (newText === "" && items[index].text === "") {
+          items.splice(index, 1);
+          saveItems(items);
+          renderItems();
+          return;
+        } else if (newText === "") {
+          input.value = items[index].text;
+          spanElement.textContent = items[index].text;
+        } else {
+          items[index].text = newText;
+          saveItems(items);
+          spanElement.textContent = newText;
+        }
+        li.replaceChild(spanElement, input);
       }
+      
+      li.replaceChild(input, spanElement);
+      input.focus();
     }
-    // Use custom delete confirmation instead of native confirm.
     function showDeleteConfirm(index) {
       pendingDeleteIndex = index;
       const items = getItems();
@@ -404,6 +416,7 @@
       pendingDeleteIndex = null;
       document.getElementById("deleteConfirmPopup").style.display = "none";
     }
+
     // ---------------------------
     // Drag-and-drop (Desktop)
     // ---------------------------
@@ -433,14 +446,12 @@
     // ---------------------------
     // Mobile Drag-and-drop (via drag-handle)
     // ---------------------------
-    // Updated to include flick-to-delete and a drag placeholder (shadow) showing the current insert point.
+    // Includes flick-to-delete (left) and flick-to-add (right)
     function handleDragTouchStart(e, index) {
-      // Start drag after a short delay (500ms)
       mobileDragTimer = setTimeout(() => {
         mobileDraggingIndex = index;
         e.currentTarget.parentElement.classList.add("dragging");
       }, 500);
-      // Record initial touch coordinates and time for flick detection
       e.currentTarget.dataset.startX = e.touches[0].clientX;
       e.currentTarget.dataset.startY = e.touches[0].clientY;
       e.currentTarget.dataset.touchStartTime = Date.now();
@@ -452,7 +463,7 @@
       const touchStartTime = parseInt(e.currentTarget.dataset.touchStartTime);
       const elapsedTime = Date.now() - touchStartTime;
       const deltaX = touch.clientX - startX;
-      // If a fast flick to the left is detected, show custom delete popup.
+      // Flick to left: show delete confirmation
       if (deltaX < -50 && elapsedTime < 300) {
         showDeleteConfirm(index);
         if (document.getElementById("dropPlaceholder")) {
@@ -460,12 +471,28 @@
         }
         return;
       }
-      // If dragging was active, complete the drop operation.
+      // Flick to right: insert a new item below and start in-place editing
+      if (deltaX > 50 && elapsedTime < 300) {
+        const items = getItems();
+        items.splice(index + 1, 0, { text: "", checked: false });
+        saveItems(items);
+        renderItems();
+        setTimeout(() => {
+          const itemList = document.getElementById("itemList");
+          if (itemList.children[index + 1]) {
+            const newSpan = itemList.children[index + 1].querySelector(".item-text");
+            if (newSpan) {
+              editItem(index + 1, newSpan);
+            }
+          }
+        }, 0);
+        return;
+      }
+      // If dragging was active, complete drop operation.
       if (mobileDraggingIndex !== null) {
         if (document.getElementById("dropPlaceholder")) {
           document.getElementById("dropPlaceholder").remove();
         }
-        // Recalculate drop index using the same logic as updateDragPlaceholder.
         let liElements = Array.from(document.querySelectorAll("#itemList li:not(.dragging):not(#dropPlaceholder)"));
         let dropIndex = liElements.length;
         for (let i = 0; i < liElements.length; i++) {
@@ -486,9 +513,8 @@
     function updateDragPlaceholder(e) {
       if (mobileDraggingIndex === null) return;
       let touch = e.touches[0];
-      // Determine drop index based on touch vertical position.
       let liElements = Array.from(document.querySelectorAll("#itemList li:not(.dragging):not(#dropPlaceholder)"));
-      let dropIndex = liElements.length; // Default to end.
+      let dropIndex = liElements.length;
       for (let i = 0; i < liElements.length; i++) {
         let rect = liElements[i].getBoundingClientRect();
         if (touch.clientY < rect.top + rect.height / 2) {
@@ -496,7 +522,6 @@
           break;
         }
       }
-      // Create or update drop placeholder element.
       if (!dropPlaceholderEl) {
         dropPlaceholderEl = document.createElement("li");
         dropPlaceholderEl.id = "dropPlaceholder";
@@ -513,7 +538,6 @@
       if (items[mobileDraggingIndex]) {
         dropPlaceholderEl.textContent = items[mobileDraggingIndex].text;
       }
-      // Insert the placeholder into the list at the computed drop index.
       const itemList = document.getElementById("itemList");
       const existingPlaceholder = document.getElementById("dropPlaceholder");
       if (existingPlaceholder) existingPlaceholder.remove();
@@ -525,7 +549,7 @@
     }
 
     // ---------------------------
-    // Render Items with Drag, Edit, Delete and Row Highlighting
+    // Render Items with Drag, Edit, Delete and In-Place Editing
     // ---------------------------
     function renderItems() {
       const itemList = document.getElementById("itemList");
@@ -560,7 +584,7 @@
           let lastTap = this.dataset.lastTap || 0;
           if (currentTime - lastTap < 300) {
             clearTimeout(itemDeleteTimer);
-            editItem(index);
+            editItem(index, span);
           }
           this.dataset.lastTap = currentTime;
           clearTimeout(itemDeleteTimer);
@@ -576,7 +600,7 @@
         });
         span.ondblclick = (e) => {
           e.stopPropagation();
-          editItem(index);
+          editItem(index, span);
         };
 
         contentDiv.appendChild(checkbox);
