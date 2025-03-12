@@ -1,253 +1,443 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Multi-List App</title>
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            max-width: 400px;
-            margin: 20px auto;
-            text-align: center;
-            padding: 10px;
-        }
-        #menu {
-            position: absolute;
-            top: 10px;
-            left: 10px;
-            font-size: 24px;
-            cursor: pointer;
-            user-select: none;
-        }
-        #menuDropdown {
-            display: none;
-            position: absolute;
-            left: 10px;
-            top: 40px;
-            background: white;
-            border: 1px solid #ccc;
-            padding: 10px;
-            width: 180px;
-            z-index: 100;
-        }
-        input[type="text"] {
-            width: 80%;
-            padding: 10px;
-            font-size: 16px;
-            border: 1px solid #ccc;
-        }
-        button {
-            padding: 8px 12px;
-            margin: 5px;
-            font-size: 16px;
-            cursor: pointer;
-        }
-        ul {
-            list-style: none;
-            padding: 0;
-        }
-        li {
-            display: flex;
-            align-items: center;
-            justify-content: flex-start;
-            padding: 8px;
-            border-bottom: 1px solid #ddd;
-            cursor: grab;
-            text-align: left;
-            word-break: break-word;
-        }
-        li span {
-            flex: 1;
-            padding-left: 10px;
-            text-align: left;
-        }
-        .dragging {
-            opacity: 0.5;
-            background: #f0f0f0;
-        }
-        .editable {
-            border: 1px solid #ccc;
-            background: white;
-            font-size: 16px;
-            width: 100%;
-            padding: 4px;
-        }
-        h2 {
-            margin: 10px 0;
-            font-size: 22px;
-            cursor: pointer;
-            user-select: none;
-        }
-    </style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Multi-List App</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      max-width: 400px;
+      margin: 20px auto;
+      text-align: center;
+      padding: 10px;
+    }
+    #menu {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      font-size: 24px;
+      cursor: pointer;
+      user-select: none;
+    }
+    #menuDropdown {
+      display: none;
+      position: absolute;
+      left: 10px;
+      top: 40px;
+      background: white;
+      border: 1px solid #ccc;
+      padding: 10px;
+      width: 200px;
+      z-index: 100;
+    }
+    input[type="text"] {
+      width: 80%;
+      padding: 10px;
+      font-size: 16px;
+      border: 1px solid #ccc;
+      margin-bottom: 10px;
+    }
+    button {
+      padding: 8px 12px;
+      margin: 5px;
+      font-size: 16px;
+      cursor: pointer;
+    }
+    ul {
+      list-style: none;
+      padding: 0;
+      margin: 0;
+    }
+    li {
+      display: flex;
+      align-items: center;
+      justify-content: flex-start;
+      padding: 8px;
+      border-bottom: 1px solid #ddd;
+      cursor: grab;
+      text-align: left;
+      word-break: break-word;
+      background: #fff;
+    }
+    li.dragging {
+      opacity: 0.5;
+      background: #f0f0f0;
+    }
+    li span {
+      flex: 1;
+      padding-left: 10px;
+      text-align: left;
+    }
+    .undo-btn {
+      display: none;
+      background: orange;
+      color: white;
+      font-size: 14px;
+      border: none;
+      cursor: pointer;
+      padding: 5px;
+      margin-top: 10px;
+    }
+    #loadListPopup {
+      display: none;
+      position: fixed;
+      top: 30%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      background: white;
+      padding: 20px;
+      border: 1px solid #ccc;
+      z-index: 200;
+    }
+    textarea {
+      width: 100%;
+      font-size: 16px;
+      padding: 10px;
+      box-sizing: border-box;
+    }
+    h2 {
+      margin: 10px 0;
+      font-size: 22px;
+      cursor: pointer;
+      user-select: none;
+    }
+  </style>
 </head>
-<body>
-    <div id="menu" onclick="toggleMenu()">☰</div>
-    <div id="menuDropdown">
-        <button onclick="newList()">+ New List</button>
-        <button onclick="clearAllCheckboxes()">Clear Checkboxes</button>
-        <div id="listSelector"></div>
-    </div>
+<body onclick="closeMenu(event)">
+  <div id="menu" onclick="toggleMenu(event)">☰</div>
+  <div id="menuDropdown">
+    <button onclick="newList()">+ New List</button>
+    <button onclick="showLoadListPopup()">+ Load List</button>
+    <button onclick="clearAllCheckboxes()">Clear Checkboxes</button>
+    <div id="listSelector"></div>
+  </div>
 
-    <h2 id="listTitle" ondblclick="editListName()">My List</h2>
-    <input type="text" id="itemInput" placeholder="Add new item...">
-    <button onclick="addItem()">Add</button>
-    <ul id="itemList"></ul>
-    <button id="deleteListBtn" onclick="deleteList()" style="display:none;">Delete List</button>
+  <h2 id="listTitle">My List</h2>
+  <input type="text" id="itemInput" placeholder="Add new item...">
+  <button onclick="addItem()">Add</button>
+  <ul id="itemList"></ul>
+  <button id="undoBtn" class="undo-btn" onclick="undoClearCheckboxes()">Undo</button>
 
-    <script>
-        let currentList = localStorage.getItem("currentList") || "Default List";
-        let draggedIndex = null;
-        let longPressTimer = null;
+  <div id="loadListPopup">
+    <textarea id="loadListInput" placeholder="Paste list here (one item per line)" rows="5"></textarea><br>
+    <button onclick="loadListFromText()">Load</button>
+    <button onclick="hideLoadListPopup()">Cancel</button>
+  </div>
 
-        document.getElementById("listTitle").innerText = currentList;
-        loadLists();
+  <script>
+    let currentList = localStorage.getItem("currentList") || "Default List";
+    let previousCheckboxState = null;
+    let listDeleteTimer = null;
+    let itemDeleteTimer = null;
+    let mobileDragTimer = null;
+    let mobileDraggingIndex = null;
+    let mobileDragStartY = 0;
+
+    // Initialize title and lists/items
+    document.getElementById("listTitle").innerText = currentList;
+    loadLists();
+    renderItems();
+
+    // Add item on Enter key in input
+    document.getElementById("itemInput").addEventListener("keypress", function(event) {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        addItem();
+      }
+    });
+
+    // ---------------------------
+    // Menu and List management
+    // ---------------------------
+    function toggleMenu(event) {
+      event.stopPropagation();
+      const menu = document.getElementById("menuDropdown");
+      menu.style.display = menu.style.display === "block" ? "none" : "block";
+    }
+    function closeMenu(event) {
+      const menu = document.getElementById("menuDropdown");
+      if (!event.target.closest("#menuDropdown") && !event.target.closest("#menu")) {
+        menu.style.display = "none";
+      }
+    }
+    function newList() {
+      const name = prompt("Enter new list name:");
+      if (name && !getLists().includes(name)) {
+        const lists = getLists();
+        lists.push(name);
+        saveLists(lists);
+        switchList(name);
+      }
+    }
+    function showLoadListPopup() {
+      document.getElementById("loadListPopup").style.display = "block";
+    }
+    function hideLoadListPopup() {
+      document.getElementById("loadListPopup").style.display = "none";
+    }
+    function loadListFromText() {
+      const text = document.getElementById("loadListInput").value.trim();
+      if (text) {
+        const items = text.split("\n").map(line => ({ text: line.trim(), checked: false }));
+        saveItems(items);
         renderItems();
+      }
+      hideLoadListPopup();
+    }
+    function switchList(name) {
+      currentList = name;
+      localStorage.setItem("currentList", name);
+      document.getElementById("listTitle").innerText = name;
+      renderItems();
+      loadLists();
+    }
+    function editListName() {
+      const title = document.getElementById("listTitle");
+      const newName = prompt("Enter new list name:", title.innerText.trim());
+      if (newName && newName !== title.innerText) {
+        let lists = getLists();
+        const index = lists.indexOf(currentList);
+        if (index !== -1) {
+          lists[index] = newName;
+          saveLists(lists);
+          // Migrate stored items
+          localStorage.setItem(`items_${newName}`, localStorage.getItem(`items_${currentList}`));
+          localStorage.removeItem(`items_${currentList}`);
+          switchList(newName);
+        }
+      }
+    }
+    function deleteList() {
+      const confirmation = prompt(`Type 'confirm' to delete the list "${currentList}":`);
+      if (confirmation === "confirm") {
+        let lists = getLists().filter(l => l !== currentList);
+        saveLists(lists);
+        localStorage.removeItem(`items_${currentList}`);
+        currentList = lists.length > 0 ? lists[0] : "Default List";
+        localStorage.setItem("currentList", currentList);
+        document.getElementById("listTitle").innerText = currentList;
+        renderItems();
+        loadLists();
+      } else {
+        alert("List deletion cancelled.");
+      }
+    }
+    function startListDeleteTimer() {
+      listDeleteTimer = setTimeout(() => {
+        deleteList();
+      }, 3000);
+    }
+    function cancelListDeleteTimer() {
+      clearTimeout(listDeleteTimer);
+    }
+    function clearAllCheckboxes() {
+      if (!confirm("Are you sure you want to clear all checkboxes?")) return;
+      previousCheckboxState = getItems().map(item => ({ ...item }));
+      const items = getItems().map(item => ({ ...item, checked: false }));
+      saveItems(items);
+      renderItems();
+      document.getElementById("undoBtn").style.display = "block";
+    }
+    function undoClearCheckboxes() {
+      if (previousCheckboxState) {
+        saveItems(previousCheckboxState);
+        renderItems();
+        document.getElementById("undoBtn").style.display = "none";
+        previousCheckboxState = null;
+      }
+    }
+    function getLists() {
+      return JSON.parse(localStorage.getItem("lists")) || ["Default List"];
+    }
+    function saveLists(lists) {
+      localStorage.setItem("lists", JSON.stringify(lists));
+    }
+    function loadLists() {
+      const listSelector = document.getElementById("listSelector");
+      listSelector.innerHTML = "";
+      getLists().forEach(name => {
+        const btn = document.createElement("button");
+        btn.textContent = name;
+        btn.style.display = "block";
+        btn.onclick = () => switchList(name);
+        listSelector.appendChild(btn);
+      });
+    }
 
-        document.getElementById("itemInput").addEventListener("keypress", function(event) {
-            if (event.key === "Enter") {
-                event.preventDefault();
-                addItem();
-            }
+    // ---------------------------
+    // Item management functions
+    // ---------------------------
+    function addItem() {
+      const input = document.getElementById("itemInput");
+      const text = input.value.trim();
+      if (text === "") return;
+      const items = getItems();
+      items.push({ text, checked: false });
+      saveItems(items);
+      input.value = "";
+      renderItems();
+    }
+    function getItems() {
+      return JSON.parse(localStorage.getItem(`items_${currentList}`)) || [];
+    }
+    function saveItems(items) {
+      localStorage.setItem(`items_${currentList}`, JSON.stringify(items));
+    }
+    function toggleItem(index) {
+      const items = getItems();
+      items[index].checked = !items[index].checked;
+      saveItems(items);
+      renderItems();
+    }
+    function editItem(index) {
+      const items = getItems();
+      const newText = prompt("Edit item:", items[index].text);
+      if (newText !== null && newText.trim() !== "") {
+        items[index].text = newText.trim();
+        saveItems(items);
+        renderItems();
+      }
+    }
+    function deleteItem(index) {
+      if (confirm("Delete this item?")) {
+        const items = getItems();
+        items.splice(index, 1);
+        saveItems(items);
+        renderItems();
+      }
+    }
+
+    // ---------------------------
+    // Drag-and-drop (Desktop)
+    // ---------------------------
+    let draggedIndex = null;
+    function handleDragStart(e, index) {
+      draggedIndex = index;
+      e.target.classList.add("dragging");
+    }
+    function handleDragOver(e) {
+      e.preventDefault();
+    }
+    function handleDrop(e, dropIndex) {
+      e.preventDefault();
+      if (draggedIndex === null) return;
+      const items = getItems();
+      const [movedItem] = items.splice(draggedIndex, 1);
+      items.splice(dropIndex, 0, movedItem);
+      saveItems(items);
+      renderItems();
+      draggedIndex = null;
+    }
+    function handleDragEnd(e) {
+      e.target.classList.remove("dragging");
+      draggedIndex = null;
+    }
+
+    // ---------------------------
+    // Mobile Drag-and-drop Simulation
+    // ---------------------------
+    function handleTouchStart(e, index) {
+      // If touch is not on the text span (so not deletion), start drag timer
+      if (e.target.tagName !== "SPAN") {
+        mobileDragTimer = setTimeout(() => {
+          mobileDraggingIndex = index;
+          mobileDragStartY = e.touches[0].clientY;
+          e.currentTarget.classList.add("dragging");
+        }, 1000);
+      }
+    }
+    function handleTouchEnd(e, index) {
+      clearTimeout(mobileDragTimer);
+      if (mobileDraggingIndex !== null) {
+        let touch = e.changedTouches[0];
+        let dropElement = document.elementFromPoint(touch.clientX, touch.clientY);
+        let liElements = document.querySelectorAll("#itemList li");
+        let dropIndex = null;
+        liElements.forEach((el, idx) => {
+          if (el.contains(dropElement)) {
+            dropIndex = idx;
+          }
         });
-
-        function toggleMenu() {
-            const menu = document.getElementById("menuDropdown");
-            menu.style.display = menu.style.display === "block" ? "none" : "block";
+        if (dropIndex !== null && dropIndex !== mobileDraggingIndex) {
+          const items = getItems();
+          const [movedItem] = items.splice(mobileDraggingIndex, 1);
+          items.splice(dropIndex, 0, movedItem);
+          saveItems(items);
+          renderItems();
         }
+        mobileDraggingIndex = null;
+      }
+    }
 
-        function newList() {
-            const name = prompt("Enter new list name:");
-            if (name && !getLists().includes(name)) {
-                const lists = getLists();
-                lists.push(name);
-                saveLists(lists);
-                switchList(name);
+    // ---------------------------
+    // Render Items with Drag, Edit, and Delete (via long press)
+    // ---------------------------
+    function renderItems() {
+      const itemList = document.getElementById("itemList");
+      itemList.innerHTML = "";
+      const items = getItems();
+      items.forEach((item, index) => {
+        const li = document.createElement("li");
+        li.draggable = true;
+        li.ondragstart = (e) => handleDragStart(e, index);
+        li.ondragover = handleDragOver;
+        li.ondrop = (e) => handleDrop(e, index);
+        li.ondragend = handleDragEnd;
+        li.ontouchstart = (e) => handleTouchStart(e, index);
+        li.ontouchend = (e) => handleTouchEnd(e, index);
+
+        // Checkbox (clicking stops propagation so it doesn’t trigger drag)
+        const checkbox = document.createElement("input");
+        checkbox.type = "checkbox";
+        checkbox.checked = item.checked;
+        checkbox.onclick = (e) => {
+          e.stopPropagation();
+          toggleItem(index);
+        };
+
+        // Item text span: double-tap to edit, long‑press (3 sec) to delete
+        const span = document.createElement("span");
+        span.textContent = item.text;
+        span.ondblclick = (e) => {
+          e.stopPropagation();
+          editItem(index);
+        };
+        span.ontouchstart = (e) => {
+          // Start timer for deletion on item text
+          itemDeleteTimer = setTimeout(() => {
+            if (confirm("Delete this item?")) {
+              deleteItem(index);
             }
-        }
+          }, 3000);
+        };
+        span.ontouchend = (e) => {
+          clearTimeout(itemDeleteTimer);
+        };
 
-        function switchList(name) {
-            currentList = name;
-            localStorage.setItem("currentList", name);
-            document.getElementById("listTitle").innerText = name;
-            renderItems();
-            loadLists();
-        }
+        li.appendChild(checkbox);
+        li.appendChild(span);
+        itemList.appendChild(li);
+      });
+    }
 
-        function editListName() {
-            const title = document.getElementById("listTitle");
-            const newName = prompt("Enter new list name:", title.innerText.trim());
-            if (newName && newName !== title.innerText) {
-                let lists = getLists();
-                const index = lists.indexOf(currentList);
-                if (index !== -1) lists[index] = newName;
-                saveLists(lists);
-                localStorage.setItem(`items_${newName}`, localStorage.getItem(`items_${currentList}`));
-                localStorage.removeItem(`items_${currentList}`);
-                switchList(newName);
-            }
-        }
+    // ---------------------------
+    // List name events: double-tap to edit, long‑press (3 sec) to delete list
+    // ---------------------------
+    const listTitle = document.getElementById("listTitle");
+    listTitle.ondblclick = (e) => {
+      e.stopPropagation();
+      editListName();
+    };
+    listTitle.ontouchstart = (e) => {
+      listDeleteTimer = setTimeout(() => {
+        deleteList();
+      }, 3000);
+    };
+    listTitle.ontouchend = (e) => {
+      clearTimeout(listDeleteTimer);
+    };
 
-        function deleteList() {
-            if (!confirm(`Are you sure you want to delete the list "${currentList}"?`)) return;
-            let lists = getLists().filter(l => l !== currentList);
-            saveLists(lists);
-            localStorage.removeItem(`items_${currentList}`);
-            currentList = lists.length > 0 ? lists[0] : "Default List";
-            localStorage.setItem("currentList", currentList);
-            document.getElementById("listTitle").innerText = currentList;
-            renderItems();
-            loadLists();
-        }
-
-        function clearAllCheckboxes() {
-            if (!confirm("Are you sure you want to clear all checkboxes?")) return;
-            const items = getItems().map(item => ({ ...item, checked: false }));
-            saveItems(items);
-            renderItems();
-        }
-
-        function getLists() {
-            return JSON.parse(localStorage.getItem("lists")) || ["Default List"];
-        }
-
-        function saveLists(lists) {
-            localStorage.setItem("lists", JSON.stringify(lists));
-        }
-
-        function loadLists() {
-            const listSelector = document.getElementById("listSelector");
-            listSelector.innerHTML = "";
-            getLists().forEach(name => {
-                const btn = document.createElement("button");
-                btn.textContent = name;
-                btn.style.display = "block";
-                btn.onclick = () => switchList(name);
-                listSelector.appendChild(btn);
-            });
-            document.getElementById("deleteListBtn").style.display = getLists().length > 1 ? "inline" : "none";
-        }
-
-        function addItem() {
-            const input = document.getElementById("itemInput");
-            const text = input.value.trim();
-            if (text === "") return;
-
-            const items = getItems();
-            items.push({ text, checked: false });
-            saveItems(items);
-
-            input.value = "";
-            renderItems();
-        }
-
-        function getItems() {
-            return JSON.parse(localStorage.getItem(`items_${currentList}`)) || [];
-        }
-
-        function saveItems(items) {
-            localStorage.setItem(`items_${currentList}`, JSON.stringify(items));
-        }
-
-        function toggleItem(index) {
-            const items = getItems();
-            items[index].checked = !items[index].checked;
-            saveItems(items);
-            renderItems();
-        }
-
-        function editItem(index) {
-            const items = getItems();
-            const newText = prompt("Edit item:", items[index].text);
-            if (newText) {
-                items[index].text = newText;
-                saveItems(items);
-                renderItems();
-            }
-        }
-
-        function renderItems() {
-            const itemList = document.getElementById("itemList");
-            itemList.innerHTML = "";
-            getItems().forEach((item, index) => {
-                const li = document.createElement("li");
-                li.draggable = true;
-                li.ondblclick = () => editItem(index);
-
-                const checkbox = document.createElement("input");
-                checkbox.type = "checkbox";
-                checkbox.checked = item.checked;
-                checkbox.onclick = () => toggleItem(index);
-
-                const span = document.createElement("span");
-                span.textContent = item.text;
-                span.style.textAlign = "left";
-
-                li.appendChild(checkbox);
-                li.appendChild(span);
-                itemList.appendChild(li);
-            });
-        }
-    </script>
+  </script>
 </body>
 </html>
