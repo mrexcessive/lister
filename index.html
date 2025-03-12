@@ -182,7 +182,7 @@
 </head>
 <body onclick="closeMenu(event)">
   <div id="menu" onclick="toggleMenu(event)">☰</div>
-  <div id="version">v0.015</div>
+  <div id="version">v0.016</div>
   <div id="menuDropdown">
     <button onclick="newList()">+ New List</button>
     <button onclick="clearAllCheckboxes()">Clear Checkboxes</button>
@@ -447,9 +447,11 @@
       };
       currentEditingInput = input;
       labelElement.parentElement.replaceChild(input, labelElement);
-      input.focus();
-      input.value = "";
-      input.setSelectionRange(input.value.length, input.value.length);
+      // deepseek-r1:14b suggestion, wait a bit!
+      setTimeout(() => {
+        input.focus();
+        input.setSelectionRange(0, 0);
+       }, 100);
     }
     function showDeleteConfirm(index) {
       pendingDeleteIndex = index;
