@@ -11,14 +11,15 @@
       margin: 20px auto;
       text-align: center;
       padding: 10px;
+      position: relative;
     }
     /* Version number styling - update version number with each new patch by adding 0.001 */
     #version {
-    position: absolute;
-    top: 10px;
-    right: 10px;
-    font-size: 10px;
-    color: #888;
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      font-size: 10px;
+      color: #888;
     }
     /* Menu styles */
     #menu {
@@ -63,7 +64,7 @@
     li {
       display: flex;
       align-items: center;
-      justify-content: flex-start;
+      justify-content: space-between;
       padding: 8px;
       border-bottom: 1px solid #ddd;
       cursor: grab;
@@ -80,21 +81,28 @@
       opacity: 0.5;
       background: #f0f0f0;
     }
-    li span {
+    /* Container for checkbox and text label */
+    .item-content {
+      display: flex;
+      align-items: center;
       flex: 1;
-      padding-left: 10px;
-      text-align: left;
-      -webkit-user-select: none;
-      user-select: none;
-      touch-action: none;
     }
-    /* Ensure checkbox takes minimal width */
+    /* Minimal width for checkbox */
     li input[type="checkbox"] {
       flex: 0 0 auto;
       margin: 0;
       padding: 0;
     }
-    /* Drag handle styling */
+    /* Item text occupies remaining space */
+    .item-text {
+      flex: 1;
+      padding: 0 10px;
+      text-align: left;
+      -webkit-user-select: none;
+      user-select: none;
+      touch-action: none;
+    }
+    /* Drag handle styling: on the right with minimal width */
     .drag-handle {
       font-size: 20px;
       padding: 0 5px;
@@ -143,7 +151,7 @@
 </head>
 <body onclick="closeMenu(event)">
   <div id="menu" onclick="toggleMenu(event)">☰</div>
-  <div id="version">0.001</div> <!-- Update version number with each new patch by adding 0.001 -->  
+  <div id="version">0.002</div> <!-- Update version number with each new patch by adding 0.001 -->
   <div id="menuDropdown">
     <button onclick="newList()">+ New List</button>
     <button onclick="showLoadListPopup()">+ Load List</button>
@@ -171,6 +179,8 @@
     // Mobile drag variables (for drag-handle only)
     let mobileDragTimer = null;
     let mobileDraggingIndex = null;
+    // For drag placeholder (the "shadow")
+    let dropPlaceholderEl = null;
 
     // Initialize title, lists, and items
     document.getElementById("listTitle").innerText = currentList;
@@ -379,22 +389,45 @@
     // ---------------------------
     // Mobile Drag-and-drop (via drag-handle)
     // ---------------------------
+    // Updated to include flick-to-delete and a drag placeholder (shadow) showing the current insert point.
     function handleDragTouchStart(e, index) {
       // Start drag after a short delay (500ms)
       mobileDragTimer = setTimeout(() => {
         mobileDraggingIndex = index;
         e.currentTarget.parentElement.classList.add("dragging");
       }, 500);
+      // Record initial touch coordinates and time for flick detection
+      e.currentTarget.dataset.startX = e.touches[0].clientX;
+      e.currentTarget.dataset.startY = e.touches[0].clientY;
+      e.currentTarget.dataset.touchStartTime = Date.now();
     }
     function handleDragTouchEnd(e, index) {
       clearTimeout(mobileDragTimer);
+      const touch = e.changedTouches[0];
+      const startX = parseFloat(e.currentTarget.dataset.startX);
+      const touchStartTime = parseInt(e.currentTarget.dataset.touchStartTime);
+      const elapsedTime = Date.now() - touchStartTime;
+      const deltaX = touch.clientX - startX;
+      // If a fast flick to the left is detected, delete the item.
+      if (deltaX < -50 && elapsedTime < 300) {
+        if (confirm("Delete this item?")) {
+          deleteItem(index);
+        }
+        // Remove any placeholder if present.
+        const placeholder = document.getElementById("dropPlaceholder");
+        if (placeholder) placeholder.remove();
+        return;
+      }
+      // If dragging was active, complete the drop operation.
       if (mobileDraggingIndex !== null) {
-        let touch = e.changedTouches[0];
+        // Remove the drop placeholder.
+        const placeholder = document.getElementById("dropPlaceholder");
+        if (placeholder) placeholder.remove();
         let dropElement = document.elementFromPoint(touch.clientX, touch.clientY);
         let liElements = document.querySelectorAll("#itemList li");
         let dropIndex = null;
         liElements.forEach((el, idx) => {
-          if (el.contains(dropElement)) {
+          if (el.contains(dropElement) && !el.classList.contains("dragging") && el.id !== "dropPlaceholder") {
             dropIndex = idx;
           }
         });
@@ -405,10 +438,50 @@
           saveItems(items);
           renderItems();
         } else {
-          // Remove dragging class if drop did not change position
+          // Remove dragging class if drop did not change position.
           e.currentTarget.parentElement.classList.remove("dragging");
         }
         mobileDraggingIndex = null;
+      }
+    }
+    function updateDragPlaceholder(e) {
+      if (mobileDraggingIndex === null) return;
+      let touch = e.touches[0];
+      // Determine drop index based on touch vertical position.
+      let liElements = Array.from(document.querySelectorAll("#itemList li:not(.dragging):not(#dropPlaceholder)"));
+      let dropIndex = liElements.length; // Default to end.
+      for (let i = 0; i < liElements.length; i++) {
+        let rect = liElements[i].getBoundingClientRect();
+        if (touch.clientY < rect.top + rect.height / 2) {
+          dropIndex = i;
+          break;
+        }
+      }
+      // Create or update drop placeholder element.
+      if (!dropPlaceholderEl) {
+        dropPlaceholderEl = document.createElement("li");
+        dropPlaceholderEl.id = "dropPlaceholder";
+        dropPlaceholderEl.style.height = "40px";
+        dropPlaceholderEl.style.background = "#f9f9f9";
+        dropPlaceholderEl.style.border = "2px dashed #aaa";
+        dropPlaceholderEl.style.margin = "4px 0";
+        dropPlaceholderEl.style.display = "flex";
+        dropPlaceholderEl.style.alignItems = "center";
+        dropPlaceholderEl.style.justifyContent = "center";
+        dropPlaceholderEl.style.fontStyle = "italic";
+      }
+      const items = getItems();
+      if (items[mobileDraggingIndex]) {
+        dropPlaceholderEl.textContent = items[mobileDraggingIndex].text;
+      }
+      // Insert the placeholder into the list at the computed drop index.
+      const itemList = document.getElementById("itemList");
+      const existingPlaceholder = document.getElementById("dropPlaceholder");
+      if (existingPlaceholder) existingPlaceholder.remove();
+      if (dropIndex >= itemList.children.length) {
+        itemList.appendChild(dropPlaceholderEl);
+      } else {
+        itemList.insertBefore(dropPlaceholderEl, itemList.children[dropIndex]);
       }
     }
 
@@ -426,18 +499,14 @@
         li.ondragover = handleDragOver;
         li.ondrop = (e) => handleDrop(e, index);
         li.ondragend = handleDragEnd;
-        // Set background color if item is checked
+        // Set background color if item is checked.
         li.style.background = item.checked ? "#d0eaff" : "#fff";
 
-        // Create drag-handle element (for mobile dragging)
-        const dragHandle = document.createElement("span");
-        dragHandle.className = "drag-handle";
-        dragHandle.innerText = "≡";
-        dragHandle.style.marginRight = "8px";
-        dragHandle.addEventListener("touchstart", (e) => handleDragTouchStart(e, index));
-        dragHandle.addEventListener("touchend", (e) => handleDragTouchEnd(e, index));
-
-        // Checkbox (clicking stops propagation so that it doesn't trigger drag)
+        // Create container for checkbox and item text.
+        const contentDiv = document.createElement("div");
+        contentDiv.className = "item-content";
+        
+        // Checkbox (click stops propagation so that it doesn't trigger drag)
         const checkbox = document.createElement("input");
         checkbox.type = "checkbox";
         checkbox.checked = item.checked;
@@ -448,8 +517,9 @@
 
         // Item text span: custom double-tap to edit, long-press (3 sec) to delete.
         const span = document.createElement("span");
+        span.className = "item-text";
         span.textContent = item.text;
-        // Custom double-tap detection on mobile for editing
+        // Custom double-tap detection on mobile for editing.
         span.addEventListener("touchend", function (e) {
           e.preventDefault();
           let currentTime = new Date().getTime();
@@ -461,7 +531,7 @@
           this.dataset.lastTap = currentTime;
           clearTimeout(itemDeleteTimer);
         });
-        // Long-press on item text to delete
+        // Long-press on item text to delete.
         span.addEventListener("touchstart", function (e) {
           e.preventDefault();
           itemDeleteTimer = setTimeout(() => {
@@ -473,14 +543,25 @@
         span.addEventListener("touchcancel", function (e) {
           clearTimeout(itemDeleteTimer);
         });
-        // Desktop double-click to edit
+        // Desktop double-click to edit.
         span.ondblclick = (e) => {
           e.stopPropagation();
           editItem(index);
         };
 
-        li.appendChild(checkbox);
-        li.appendChild(span);
+        // Append checkbox and text to content container.
+        contentDiv.appendChild(checkbox);
+        contentDiv.appendChild(span);
+        // Create drag-handle element (for mobile dragging) and place on the right.
+        const dragHandle = document.createElement("span");
+        dragHandle.className = "drag-handle";
+        dragHandle.innerText = "≡";
+        dragHandle.addEventListener("touchstart", (e) => handleDragTouchStart(e, index));
+        dragHandle.addEventListener("touchend", (e) => handleDragTouchEnd(e, index));
+        dragHandle.addEventListener("touchmove", (e) => updateDragPlaceholder(e));
+        
+        // Append content container then drag-handle to li.
+        li.appendChild(contentDiv);
         li.appendChild(dragHandle);
         itemList.appendChild(li);
       });
