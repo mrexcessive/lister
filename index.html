@@ -55,7 +55,8 @@
       cursor: pointer;
       user-select: none;
       -webkit-user-select: none;
-      touch-action: none;
+      /* Allow vertical pan for scrolling */
+      touch-action: pan-y;
     }
     button {
       padding: 8px 12px;
@@ -68,7 +69,7 @@
       padding: 0;
       margin: 0;
     }
-    /* List items: allow vertical pan (scrolling) */
+    /* List items – allow vertical panning (for scrolling) */
     li {
       display: flex;
       align-items: center;
@@ -79,9 +80,6 @@
       text-align: left;
       word-break: break-word;
       background: #fff;
-      -webkit-user-select: none;
-      -moz-user-select: none;
-      -ms-user-select: none;
       user-select: none;
       touch-action: pan-y;
     }
@@ -101,7 +99,7 @@
       margin: 0;
       padding: 0;
     }
-    /* Item text occupies remaining space */
+    /* Item text styling */
     .item-text {
       flex: 1;
       padding: 0 10px;
@@ -175,6 +173,7 @@
       width: 100%;
       box-sizing: border-box;
       user-select: none;
+      cursor: default;
     }
     /* Increase scrollbar sensitive area (WebKit only) */
     ::-webkit-scrollbar {
@@ -184,7 +183,8 @@
 </head>
 <body onclick="closeMenu(event)">
   <div id="menu" onclick="toggleMenu(event)">☰</div>
-  <div id="version">0.006</div> <!-- Updated version number -->
+  <!-- Updated version number -->
+  <div id="version">0.007</div>
 
   <div id="menuDropdown">
     <button onclick="newList()">+ New List</button>
@@ -217,17 +217,16 @@
   </div>
 
   <script>
+    // Global variables
     let currentList = localStorage.getItem("currentList") || "Default List";
     let previousCheckboxState = null;
     let listDeleteTimer = null;
     let itemDeleteTimer = null;
-    // Variables for mobile drag and flick detection
     let mobileDragTimer = null;
     let mobileDraggingIndex = null;
     let dropPlaceholderEl = null;
     let pendingDeleteIndex = null;
-
-    // Global variable to track an active editing input (if needed)
+    // To ensure only one editing field is active at any time.
     let currentEditingInput = null;
 
     // Initialize title, lists, and items
@@ -283,20 +282,51 @@
       renderItems();
       loadLists();
     }
-    function editListName() {
-      const title = document.getElementById("listTitle");
-      const newName = prompt("Enter new list name:", title.innerText.trim());
-      if (newName && newName !== title.innerText) {
-        let lists = getLists();
-        const index = lists.indexOf(currentList);
-        if (index !== -1) {
-          lists[index] = newName;
-          saveLists(lists);
-          localStorage.setItem(`items_${newName}`, localStorage.getItem(`items_${currentList}`));
-          localStorage.removeItem(`items_${currentList}`);
-          switchList(newName);
+    // In-place editing for the list title.
+    function editListTitle() {
+      if (currentEditingInput) currentEditingInput.blur();
+      const listTitleElement = document.getElementById("listTitle");
+      const originalTitle = listTitleElement.innerText;
+      const input = document.createElement("input");
+      input.type = "text";
+      input.value = originalTitle;
+      input.style.fontSize = "22px";
+      input.style.textAlign = "center";
+      input.onkeydown = function(e) {
+        if (e.key === "Enter") {
+          input.blur();
         }
-      }
+      };
+      input.onblur = function() {
+        const newTitle = input.value.trim();
+        if (newTitle === "") {
+          listTitleElement.innerText = originalTitle;
+        } else {
+          listTitleElement.innerText = newTitle;
+          if (newTitle !== originalTitle) {
+            let lists = getLists();
+            const idx = lists.indexOf(originalTitle);
+            if (idx !== -1) {
+              lists[idx] = newTitle;
+              saveLists(lists);
+              // Migrate stored items if needed.
+              localStorage.setItem(`items_${newTitle}`, localStorage.getItem(`items_${originalTitle}`));
+              localStorage.removeItem(`items_${originalTitle}`);
+            }
+            currentList = newTitle;
+            localStorage.setItem("currentList", newTitle);
+          }
+        }
+        document.getElementById("listHeader").replaceChild(listTitleElement, input);
+        currentEditingInput = null;
+      };
+      currentEditingInput = input;
+      document.getElementById("listHeader").replaceChild(input, listTitleElement);
+      input.focus();
+    }
+    // Replace the old prompt-based edit with in-place editing.
+    function editListName() {
+      editListTitle();
     }
     function deleteList() {
       const confirmation = prompt(`Type 'confirm' to delete the list "${currentList}":`);
@@ -370,44 +400,38 @@
       saveItems(items);
       renderItems();
     }
-    // In-place editing: replaces the label with an input field that saves on Enter or when clicking elsewhere.
+    // In-place editing for an item.
     function editItem(index, labelElement) {
+      if (currentEditingInput) currentEditingInput.blur();
       const items = getItems();
+      const originalText = items[index].text;
       const li = labelElement.parentElement.parentElement;
       const input = document.createElement("input");
       input.type = "text";
-      input.value = items[index].text;
+      input.value = originalText;
       input.style.flex = "1";
-
-      function finishEditing() {
-        document.removeEventListener("click", clickOutsideHandler);
+      input.onkeydown = function(e) {
+        if (e.key === "Enter") {
+          input.blur();
+        }
+      };
+      input.onblur = function() {
         const newText = input.value.trim();
-        if (newText === "" && items[index].text === "") {
-          items.splice(index, 1);
-          saveItems(items);
-          renderItems();
-          return;
-        } else if (newText === "") {
-          input.value = items[index].text;
-          labelElement.textContent = items[index].text;
+        if (newText === "") {
+          // If originally empty, remove the item; otherwise, revert.
+          if (originalText === "") {
+            items.splice(index, 1);
+          } else {
+            items[index].text = originalText;
+          }
         } else {
           items[index].text = newText;
-          saveItems(items);
-          labelElement.textContent = newText;
         }
-        li.replaceChild(labelElement, input);
-      }
-      function clickOutsideHandler(e) {
-        if (e.target !== input) {
-          finishEditing();
-        }
-      }
-      document.addEventListener("click", clickOutsideHandler);
-      input.onkeydown = function(e) {
-        if (e.key === "Enter") finishEditing();
+        saveItems(items);
+        renderItems();
+        currentEditingInput = null;
       };
-      input.onblur = finishEditing;
-      
+      currentEditingInput = input;
       li.replaceChild(input, labelElement);
       input.focus();
     }
@@ -491,7 +515,7 @@
       const touchStartTime = parseInt(e.currentTarget.dataset.touchStartTime);
       const elapsedTime = Date.now() - touchStartTime;
       const deltaX = touch.clientX - startX;
-      // Flick left: trigger delete
+      // Flick left anywhere on the row: trigger delete.
       if (deltaX < -50 && elapsedTime < 300) {
         showDeleteConfirm(index);
         if (document.getElementById("dropPlaceholder")) {
@@ -499,7 +523,7 @@
         }
         return;
       }
-      // Flick right on handle: insert new item after this row.
+      // Flick right on the handle: insert new item after this row.
       if (deltaX > 50 && elapsedTime < 300) {
         insertNewItem(index + 1);
         return;
@@ -609,7 +633,7 @@
     }
 
     // ---------------------------
-    // Render Items – attach new touch/double-tap and flick listeners on each li.
+    // Render Items – attach touch/double-tap and flick listeners on each li.
     // ---------------------------
     function renderItems() {
       const itemList = document.getElementById("itemList");
@@ -627,7 +651,6 @@
         // Create the content container (checkbox and label)
         const contentDiv = document.createElement("div");
         contentDiv.className = "item-content";
-        
         const checkbox = document.createElement("input");
         checkbox.type = "checkbox";
         checkbox.checked = item.checked;
@@ -635,7 +658,6 @@
           e.stopPropagation();
           toggleItem(index);
         };
-
         const span = document.createElement("span");
         span.className = "item-text";
         span.textContent = item.text;
@@ -643,7 +665,7 @@
         contentDiv.appendChild(span);
         li.appendChild(contentDiv);
 
-        // Drag-handle (with its own touch events)
+        // Drag-handle with its own touch events
         const dragHandle = document.createElement("span");
         dragHandle.className = "drag-handle";
         dragHandle.innerText = "≡";
@@ -666,7 +688,7 @@
           const elapsed = currentTime - parseInt(this.dataset.touchStartTime || currentTime);
           const deltaX = touch.clientX - startX;
           const deltaY = touch.clientY - startY;
-          // Double-tap detection (minimal movement)
+          // If double-tap is detected (minimal movement within 300ms), start editing.
           if (this.dataset.lastTap && (currentTime - parseInt(this.dataset.lastTap)) < 300 &&
               Math.abs(deltaX) < 10 && Math.abs(deltaY) < 10) {
             editItem(index, this.querySelector(".item-text"));
@@ -675,12 +697,12 @@
           } else {
             this.dataset.lastTap = currentTime;
           }
-          // Flick left to delete detection
+          // Flick left to delete.
           if (deltaX < -50 && elapsed < 300) {
             showDeleteConfirm(index);
             return;
           }
-          // Flick right to add detection
+          // Flick right to add.
           if (deltaX > 50 && elapsed < 300) {
             insertNewItem(index + 1);
             return;
@@ -696,13 +718,12 @@
       const footer = document.createElement("li");
       footer.className = "footer-bar";
       footer.style.border = "none";
-      footer.style.cursor = "default";
       footer.innerText = "LISTER 🐱";
       itemList.appendChild(footer);
     }
 
     // ---------------------------
-    // List title events: double-tap (or double-click) to edit name, long-press to delete list.
+    // List title events: double-tap (or double-click) to edit the title, long-press to delete list.
     // ---------------------------
     const listTitle = document.getElementById("listTitle");
     listTitle.addEventListener("touchstart", function (e) {
@@ -716,7 +737,7 @@
       const currentTime = Date.now();
       if (this.dataset.lastTap && (currentTime - parseInt(this.dataset.lastTap)) < 300) {
         clearTimeout(listDeleteTimer);
-        editListName();
+        editListTitle();
         this.dataset.lastTap = "";
       } else {
         this.dataset.lastTap = currentTime;
@@ -725,7 +746,7 @@
     });
     listTitle.ondblclick = (e) => {
       e.stopPropagation();
-      editListName();
+      editListTitle();
     };
   </script>
 </body>
