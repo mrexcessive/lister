@@ -106,7 +106,6 @@
       flex: 1;
       padding: 0 10px;
       text-align: left;
-      -webkit-user-select: none;
       user-select: none;
       touch-action: none;
     }
@@ -175,7 +174,7 @@
 </head>
 <body onclick="closeMenu(event)">
   <div id="menu" onclick="toggleMenu(event)">☰</div>
-  <div id="version">0.004</div> <!-- Updated version number -->
+  <div id="version">0.005</div> <!-- Updated version number -->
 
   <div id="menuDropdown">
     <button onclick="newList()">+ New List</button>
@@ -183,13 +182,13 @@
     <div id="listSelector"></div>
   </div>
 
-  <!-- Header: List title and new load button -->
+  <!-- Header: List title and load button -->
   <div id="listHeader">
     <h2 id="listTitle">My List</h2>
     <button id="loadBtn" onclick="showLoadListPopup()">load</button>
   </div>
 
-  <!-- (Add-item input removed as new items are created by flicking right) -->
+  <!-- The add-item input has been removed; new items are added by flicking right -->
   <ul id="itemList"></ul>
   <button id="undoBtn" class="undo-btn" onclick="undoClearCheckboxes()">Undo</button>
 
@@ -212,12 +211,10 @@
     let previousCheckboxState = null;
     let listDeleteTimer = null;
     let itemDeleteTimer = null;
-    // Mobile drag variables (for drag-handle only)
+    // Variables for mobile drag and flick detection on drag-handle (retained for desktop drag)
     let mobileDragTimer = null;
     let mobileDraggingIndex = null;
-    // For drag placeholder (the "shadow")
     let dropPlaceholderEl = null;
-    // Pending delete index for custom delete popup
     let pendingDeleteIndex = null;
 
     // Initialize title, lists, and items
@@ -348,7 +345,6 @@
     // ---------------------------
     // Item management functions
     // ---------------------------
-    // (The addItem() function and input box have been removed.)
     function getItems() {
       return JSON.parse(localStorage.getItem(`items_${currentList}`)) || [];
     }
@@ -361,24 +357,22 @@
       saveItems(items);
       renderItems();
     }
-    // In-place editing for items (for both double-click and flick-right new item)
-    function editItem(index, spanElement) {
+    // In-place editing: replaces the label with an input field that saves on Enter or blur.
+    function editItem(index, labelElement) {
       const items = getItems();
-      const li = spanElement.parentElement.parentElement;
+      const li = labelElement.parentElement.parentElement;
       const input = document.createElement("input");
       input.type = "text";
       input.value = items[index].text;
       input.style.flex = "1";
       input.onkeydown = function(e) {
-        if (e.key === "Enter") {
-          finishEditing();
-        }
+        if (e.key === "Enter") finishEditing();
       };
       input.onblur = finishEditing;
       
       function finishEditing() {
         const newText = input.value.trim();
-        // If editing a new (empty) item and the user leaves it empty, remove it.
+        // If editing a new (empty) item and left empty, remove it.
         if (newText === "" && items[index].text === "") {
           items.splice(index, 1);
           saveItems(items);
@@ -386,16 +380,16 @@
           return;
         } else if (newText === "") {
           input.value = items[index].text;
-          spanElement.textContent = items[index].text;
+          labelElement.textContent = items[index].text;
         } else {
           items[index].text = newText;
           saveItems(items);
-          spanElement.textContent = newText;
+          labelElement.textContent = newText;
         }
-        li.replaceChild(spanElement, input);
+        li.replaceChild(labelElement, input);
       }
       
-      li.replaceChild(input, spanElement);
+      li.replaceChild(input, labelElement);
       input.focus();
     }
     function showDeleteConfirm(index) {
@@ -416,9 +410,25 @@
       pendingDeleteIndex = null;
       document.getElementById("deleteConfirmPopup").style.display = "none";
     }
+    // Insert a new (empty) item at the given index and immediately start editing it.
+    function insertNewItem(index) {
+      let items = getItems();
+      items.splice(index, 0, { text: "", checked: false });
+      saveItems(items);
+      renderItems();
+      setTimeout(() => {
+        const itemList = document.getElementById("itemList");
+        if (itemList.children[index]) {
+          const newLabel = itemList.children[index].querySelector(".item-text");
+          if (newLabel) {
+            editItem(index, newLabel);
+          }
+        }
+      }, 0);
+    }
 
     // ---------------------------
-    // Drag-and-drop (Desktop)
+    // Drag-and-drop (Desktop) – unchanged from before.
     // ---------------------------
     let draggedIndex = null;
     function handleDragStart(e, index) {
@@ -445,8 +455,8 @@
 
     // ---------------------------
     // Mobile Drag-and-drop (via drag-handle)
+    // (Retained flick handling for the drag-handle – if the gesture is on the handle, it will still check for left (delete) or right (add))
     // ---------------------------
-    // Includes flick-to-delete (left) and flick-to-add (right)
     function handleDragTouchStart(e, index) {
       mobileDragTimer = setTimeout(() => {
         mobileDraggingIndex = index;
@@ -463,7 +473,7 @@
       const touchStartTime = parseInt(e.currentTarget.dataset.touchStartTime);
       const elapsedTime = Date.now() - touchStartTime;
       const deltaX = touch.clientX - startX;
-      // Flick to left: show delete confirmation
+      // Flick to left: trigger delete
       if (deltaX < -50 && elapsedTime < 300) {
         showDeleteConfirm(index);
         if (document.getElementById("dropPlaceholder")) {
@@ -471,24 +481,12 @@
         }
         return;
       }
-      // Flick to right: insert a new item below and start in-place editing
+      // Flick to right on the handle: insert new item after this row.
       if (deltaX > 50 && elapsedTime < 300) {
-        const items = getItems();
-        items.splice(index + 1, 0, { text: "", checked: false });
-        saveItems(items);
-        renderItems();
-        setTimeout(() => {
-          const itemList = document.getElementById("itemList");
-          if (itemList.children[index + 1]) {
-            const newSpan = itemList.children[index + 1].querySelector(".item-text");
-            if (newSpan) {
-              editItem(index + 1, newSpan);
-            }
-          }
-        }, 0);
+        insertNewItem(index + 1);
         return;
       }
-      // If dragging was active, complete drop operation.
+      // If dragging was active, complete drop.
       if (mobileDraggingIndex !== null) {
         if (document.getElementById("dropPlaceholder")) {
           document.getElementById("dropPlaceholder").remove();
@@ -549,7 +547,53 @@
     }
 
     // ---------------------------
-    // Render Items with Drag, Edit, Delete and In-Place Editing
+    // Global flick detection on the list container
+    // (Allows adding an item when the list is empty or when tapping outside any li)
+    // ---------------------------
+    const itemListContainer = document.getElementById("itemList");
+    itemListContainer.addEventListener("touchstart", function(e) {
+      if (e.target === this) {
+        this.dataset.startX = e.touches[0].clientX;
+        this.dataset.startY = e.touches[0].clientY;
+        this.dataset.touchStartTime = Date.now();
+      }
+    });
+    itemListContainer.addEventListener("touchend", function(e) {
+      if (e.target === this) {
+        const currentTime = Date.now();
+        const startX = parseFloat(this.dataset.startX);
+        const startY = parseFloat(this.dataset.startY);
+        const elapsed = currentTime - parseInt(this.dataset.touchStartTime);
+        const deltaX = e.changedTouches[0].clientX - startX;
+        if (deltaX > 50 && elapsed < 300) {
+          const touchY = e.changedTouches[0].clientY;
+          const index = getInsertionIndexFromY(touchY);
+          insertNewItem(index);
+        }
+      }
+    });
+    // Compute insertion index based on Y coordinate.
+    function getInsertionIndexFromY(touchY) {
+      const liElements = Array.from(document.querySelectorAll("#itemList li"));
+      if (liElements.length === 0) return 0;
+      let closestIndex = 0;
+      let minDiff = Infinity;
+      liElements.forEach((li, i) => {
+        const rect = li.getBoundingClientRect();
+        const centerY = rect.top + rect.height / 2;
+        const diff = Math.abs(touchY - centerY);
+        if (diff < minDiff) {
+          minDiff = diff;
+          closestIndex = i;
+        }
+      });
+      const rect = liElements[closestIndex].getBoundingClientRect();
+      const centerY = rect.top + rect.height / 2;
+      return touchY > centerY ? closestIndex + 1 : closestIndex;
+    }
+
+    // ---------------------------
+    // Render Items – attach new touch/double-tap and flick listeners on each li.
     // ---------------------------
     function renderItems() {
       const itemList = document.getElementById("itemList");
@@ -564,6 +608,7 @@
         li.ondragend = handleDragEnd;
         li.style.background = item.checked ? "#d0eaff" : "#fff";
 
+        // Create the content container (checkbox and label)
         const contentDiv = document.createElement("div");
         contentDiv.className = "item-content";
         
@@ -578,68 +623,76 @@
         const span = document.createElement("span");
         span.className = "item-text";
         span.textContent = item.text;
-        span.addEventListener("touchend", function (e) {
-          e.preventDefault();
-          let currentTime = new Date().getTime();
-          let lastTap = this.dataset.lastTap || 0;
-          if (currentTime - lastTap < 300) {
-            clearTimeout(itemDeleteTimer);
-            editItem(index, span);
-          }
-          this.dataset.lastTap = currentTime;
-          clearTimeout(itemDeleteTimer);
-        });
-        span.addEventListener("touchstart", function (e) {
-          e.preventDefault();
-          itemDeleteTimer = setTimeout(() => {
-            showDeleteConfirm(index);
-          }, 3000);
-        });
-        span.addEventListener("touchcancel", function (e) {
-          clearTimeout(itemDeleteTimer);
-        });
-        span.ondblclick = (e) => {
-          e.stopPropagation();
-          editItem(index, span);
-        };
 
         contentDiv.appendChild(checkbox);
         contentDiv.appendChild(span);
+        li.appendChild(contentDiv);
+
+        // Drag-handle (retains its own touch events)
         const dragHandle = document.createElement("span");
         dragHandle.className = "drag-handle";
         dragHandle.innerText = "≡";
         dragHandle.addEventListener("touchstart", (e) => handleDragTouchStart(e, index));
         dragHandle.addEventListener("touchend", (e) => handleDragTouchEnd(e, index));
         dragHandle.addEventListener("touchmove", (e) => updateDragPlaceholder(e));
-        
-        li.appendChild(contentDiv);
         li.appendChild(dragHandle);
+
+        // Attach double-tap (or double-click) and flick detection on the entire li.
+        li.addEventListener("touchstart", function(e) {
+          this.dataset.startX = e.touches[0].clientX;
+          this.dataset.startY = e.touches[0].clientY;
+          this.dataset.touchStartTime = Date.now();
+        });
+        li.addEventListener("touchend", function(e) {
+          const currentTime = Date.now();
+          const startX = parseFloat(this.dataset.startX || 0);
+          const startY = parseFloat(this.dataset.startY || 0);
+          const touch = e.changedTouches[0];
+          const elapsed = currentTime - parseInt(this.dataset.touchStartTime || currentTime);
+          const deltaX = touch.clientX - startX;
+          const deltaY = touch.clientY - startY;
+          // Double-tap detection (minimal movement)
+          if (this.dataset.lastTap && (currentTime - parseInt(this.dataset.lastTap)) < 300 &&
+              Math.abs(deltaX) < 10 && Math.abs(deltaY) < 10) {
+            editItem(index, this.querySelector(".item-text"));
+            this.dataset.lastTap = "";
+            return;
+          } else {
+            this.dataset.lastTap = currentTime;
+          }
+          // Flick-to-add detection on the row (flick right)
+          if (deltaX > 50 && elapsed < 300) {
+            insertNewItem(index + 1);
+          }
+        });
+        li.ondblclick = function(e) {
+          editItem(index, this.querySelector(".item-text"));
+        };
+
         itemList.appendChild(li);
       });
     }
 
     // ---------------------------
-    // List title events: double-tap to edit, long-press (3 sec) to delete list
+    // List title events: double-tap (or double-click) to edit name, long-press to delete list.
     // ---------------------------
     const listTitle = document.getElementById("listTitle");
-    listTitle.addEventListener("touchend", function (e) {
-      e.preventDefault();
-      let currentTime = new Date().getTime();
-      let lastTap = this.dataset.lastTap || 0;
-      if (currentTime - lastTap < 300) {
-        clearTimeout(listDeleteTimer);
-        editListName();
-      }
-      this.dataset.lastTap = currentTime;
-      clearTimeout(listDeleteTimer);
-    });
     listTitle.addEventListener("touchstart", function (e) {
       e.preventDefault();
       listDeleteTimer = setTimeout(() => {
         deleteList();
       }, 3000);
     });
-    listTitle.addEventListener("touchcancel", function (e) {
+    listTitle.addEventListener("touchend", function (e) {
+      e.preventDefault();
+      const currentTime = Date.now();
+      if (this.dataset.lastTap && (currentTime - parseInt(this.dataset.lastTap)) < 300) {
+        clearTimeout(listDeleteTimer);
+        editListName();
+        this.dataset.lastTap = "";
+      } else {
+        this.dataset.lastTap = currentTime;
+      }
       clearTimeout(listDeleteTimer);
     });
     listTitle.ondblclick = (e) => {
