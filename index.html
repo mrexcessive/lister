@@ -12,6 +12,14 @@
       text-align: center;
       padding: 10px;
     }
+    /* Version number styling - update version number with each new patch by adding 0.001 */
+    #version {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    font-size: 10px;
+    color: #888;
+    }
     /* Menu styles */
     #menu {
       position: absolute;
@@ -80,12 +88,20 @@
       user-select: none;
       touch-action: none;
     }
+    /* Ensure checkbox takes minimal width */
+    li input[type="checkbox"] {
+      flex: 0 0 auto;
+      margin: 0;
+      padding: 0;
+    }
     /* Drag handle styling */
     .drag-handle {
       font-size: 20px;
       padding: 0 5px;
       cursor: grab;
       user-select: none;
+      flex: 0 0 auto;
+      margin-left: 5px;
     }
     .undo-btn {
       display: none;
@@ -127,6 +143,7 @@
 </head>
 <body onclick="closeMenu(event)">
   <div id="menu" onclick="toggleMenu(event)">☰</div>
+  <div id="version">0.001</div> <!-- Update version number with each new patch by adding 0.001 -->  
   <div id="menuDropdown">
     <button onclick="newList()">+ New List</button>
     <button onclick="showLoadListPopup()">+ Load List</button>
@@ -462,9 +479,9 @@
           editItem(index);
         };
 
-        li.appendChild(dragHandle);
         li.appendChild(checkbox);
         li.appendChild(span);
+        li.appendChild(dragHandle);
         itemList.appendChild(li);
       });
     }
