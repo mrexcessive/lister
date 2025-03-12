@@ -184,7 +184,7 @@
 <body onclick="closeMenu(event)">
   <div id="menu" onclick="toggleMenu(event)">☰</div>
   <!-- Updated version number -->
-  <div id="version">0.007</div>
+  <div id="version">0.008</div>
 
   <div id="menuDropdown">
     <button onclick="newList()">+ New List</button>
@@ -405,7 +405,7 @@
       if (currentEditingInput) currentEditingInput.blur();
       const items = getItems();
       const originalText = items[index].text;
-      const li = labelElement.parentElement.parentElement;
+      // Instead of replacing from li, replace from the label's parent.
       const input = document.createElement("input");
       input.type = "text";
       input.value = originalText;
@@ -432,7 +432,8 @@
         currentEditingInput = null;
       };
       currentEditingInput = input;
-      li.replaceChild(input, labelElement);
+      // Fix: replace the label within its parent rather than from li directly.
+      labelElement.parentElement.replaceChild(input, labelElement);
       input.focus();
     }
     function showDeleteConfirm(index) {
