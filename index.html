@@ -182,7 +182,7 @@
 </head>
 <body onclick="closeMenu(event)">
   <div id="menu" onclick="toggleMenu(event)">☰</div>
-  <div id="version">v0.016</div>
+  <div id="version">v0.017</div>
   <div id="menuDropdown">
     <button onclick="newList()">+ New List</button>
     <button onclick="clearAllCheckboxes()">Clear Checkboxes</button>
@@ -450,7 +450,10 @@
       // deepseek-r1:14b suggestion, wait a bit!
       setTimeout(() => {
         input.focus();
-        input.setSelectionRange(0, 0);
+        //input.setSelectionRange(0, 0);
+        if (input.value === '') { // another DS-14b suggestion
+            input.click();
+        }
        }, 100);
     }
     function showDeleteConfirm(index) {
