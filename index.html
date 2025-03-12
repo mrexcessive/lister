@@ -13,7 +13,7 @@
       padding: 10px;
       position: relative;
     }
-    /* Version number styling - update version number with each new patch by adding 0.001 */
+    /* Version number styling */
     #version {
       position: absolute;
       top: 10px;
@@ -68,7 +68,7 @@
       padding: 0;
       margin: 0;
     }
-    /* List items: disable text selection and default touch actions */
+    /* List items: allow vertical pan (scrolling) */
     li {
       display: flex;
       align-items: center;
@@ -83,7 +83,7 @@
       -moz-user-select: none;
       -ms-user-select: none;
       user-select: none;
-      touch-action: none;
+      touch-action: pan-y;
     }
     li.dragging {
       opacity: 0.5;
@@ -107,9 +107,9 @@
       padding: 0 10px;
       text-align: left;
       user-select: none;
-      touch-action: none;
+      touch-action: pan-y;
     }
-    /* Drag handle styling: on the right with minimal width */
+    /* Drag handle styling */
     .drag-handle {
       font-size: 20px;
       padding: 0 5px;
@@ -166,6 +166,16 @@
       color: #666;
       margin: 5px 0 10px;
     }
+    /* Footer bar style */
+    .footer-bar {
+      background: #eee;
+      text-align: center;
+      padding: 8px;
+      font-size: 16px;
+      width: 100%;
+      box-sizing: border-box;
+      user-select: none;
+    }
     /* Increase scrollbar sensitive area (WebKit only) */
     ::-webkit-scrollbar {
       width: 32px;
@@ -211,11 +221,14 @@
     let previousCheckboxState = null;
     let listDeleteTimer = null;
     let itemDeleteTimer = null;
-    // Variables for mobile drag and flick detection on drag-handle (retained for desktop drag)
+    // Variables for mobile drag and flick detection
     let mobileDragTimer = null;
     let mobileDraggingIndex = null;
     let dropPlaceholderEl = null;
     let pendingDeleteIndex = null;
+
+    // Global variable to track an active editing input (if needed)
+    let currentEditingInput = null;
 
     // Initialize title, lists, and items
     document.getElementById("listTitle").innerText = currentList;
@@ -357,7 +370,7 @@
       saveItems(items);
       renderItems();
     }
-    // In-place editing: replaces the label with an input field that saves on Enter or blur.
+    // In-place editing: replaces the label with an input field that saves on Enter or when clicking elsewhere.
     function editItem(index, labelElement) {
       const items = getItems();
       const li = labelElement.parentElement.parentElement;
@@ -365,14 +378,10 @@
       input.type = "text";
       input.value = items[index].text;
       input.style.flex = "1";
-      input.onkeydown = function(e) {
-        if (e.key === "Enter") finishEditing();
-      };
-      input.onblur = finishEditing;
-      
+
       function finishEditing() {
+        document.removeEventListener("click", clickOutsideHandler);
         const newText = input.value.trim();
-        // If editing a new (empty) item and left empty, remove it.
         if (newText === "" && items[index].text === "") {
           items.splice(index, 1);
           saveItems(items);
@@ -388,6 +397,16 @@
         }
         li.replaceChild(labelElement, input);
       }
+      function clickOutsideHandler(e) {
+        if (e.target !== input) {
+          finishEditing();
+        }
+      }
+      document.addEventListener("click", clickOutsideHandler);
+      input.onkeydown = function(e) {
+        if (e.key === "Enter") finishEditing();
+      };
+      input.onblur = finishEditing;
       
       li.replaceChild(input, labelElement);
       input.focus();
@@ -428,7 +447,7 @@
     }
 
     // ---------------------------
-    // Drag-and-drop (Desktop) – unchanged from before.
+    // Drag-and-drop (Desktop) – unchanged.
     // ---------------------------
     let draggedIndex = null;
     function handleDragStart(e, index) {
@@ -454,8 +473,7 @@
     }
 
     // ---------------------------
-    // Mobile Drag-and-drop (via drag-handle)
-    // (Retained flick handling for the drag-handle – if the gesture is on the handle, it will still check for left (delete) or right (add))
+    // Mobile Drag-and-drop and flick detection (via drag-handle)
     // ---------------------------
     function handleDragTouchStart(e, index) {
       mobileDragTimer = setTimeout(() => {
@@ -473,7 +491,7 @@
       const touchStartTime = parseInt(e.currentTarget.dataset.touchStartTime);
       const elapsedTime = Date.now() - touchStartTime;
       const deltaX = touch.clientX - startX;
-      // Flick to left: trigger delete
+      // Flick left: trigger delete
       if (deltaX < -50 && elapsedTime < 300) {
         showDeleteConfirm(index);
         if (document.getElementById("dropPlaceholder")) {
@@ -481,7 +499,7 @@
         }
         return;
       }
-      // Flick to right on the handle: insert new item after this row.
+      // Flick right on handle: insert new item after this row.
       if (deltaX > 50 && elapsedTime < 300) {
         insertNewItem(index + 1);
         return;
@@ -547,8 +565,7 @@
     }
 
     // ---------------------------
-    // Global flick detection on the list container
-    // (Allows adding an item when the list is empty or when tapping outside any li)
+    // Global flick detection on the list container (for adding items when tapping outside any li)
     // ---------------------------
     const itemListContainer = document.getElementById("itemList");
     itemListContainer.addEventListener("touchstart", function(e) {
@@ -562,7 +579,6 @@
       if (e.target === this) {
         const currentTime = Date.now();
         const startX = parseFloat(this.dataset.startX);
-        const startY = parseFloat(this.dataset.startY);
         const elapsed = currentTime - parseInt(this.dataset.touchStartTime);
         const deltaX = e.changedTouches[0].clientX - startX;
         if (deltaX > 50 && elapsed < 300) {
@@ -623,12 +639,11 @@
         const span = document.createElement("span");
         span.className = "item-text";
         span.textContent = item.text;
-
         contentDiv.appendChild(checkbox);
         contentDiv.appendChild(span);
         li.appendChild(contentDiv);
 
-        // Drag-handle (retains its own touch events)
+        // Drag-handle (with its own touch events)
         const dragHandle = document.createElement("span");
         dragHandle.className = "drag-handle";
         dragHandle.innerText = "≡";
@@ -637,7 +652,7 @@
         dragHandle.addEventListener("touchmove", (e) => updateDragPlaceholder(e));
         li.appendChild(dragHandle);
 
-        // Attach double-tap (or double-click) and flick detection on the entire li.
+        // Attach touch listeners for the entire row.
         li.addEventListener("touchstart", function(e) {
           this.dataset.startX = e.touches[0].clientX;
           this.dataset.startY = e.touches[0].clientY;
@@ -660,9 +675,15 @@
           } else {
             this.dataset.lastTap = currentTime;
           }
-          // Flick-to-add detection on the row (flick right)
+          // Flick left to delete detection
+          if (deltaX < -50 && elapsed < 300) {
+            showDeleteConfirm(index);
+            return;
+          }
+          // Flick right to add detection
           if (deltaX > 50 && elapsed < 300) {
             insertNewItem(index + 1);
+            return;
           }
         });
         li.ondblclick = function(e) {
@@ -671,6 +692,13 @@
 
         itemList.appendChild(li);
       });
+      // Append a full-width pale grey footer bar.
+      const footer = document.createElement("li");
+      footer.className = "footer-bar";
+      footer.style.border = "none";
+      footer.style.cursor = "default";
+      footer.innerText = "LISTER 🐱";
+      itemList.appendChild(footer);
     }
 
     // ---------------------------
