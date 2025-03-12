@@ -147,11 +147,35 @@
       -webkit-user-select: none;
       touch-action: none;
     }
+    /* Custom delete confirmation popup */
+    #deleteConfirmPopup {
+      display: none;
+      position: fixed;
+      top: 30%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      background: white;
+      border: 1px solid #ccc;
+      padding: 20px;
+      z-index: 210;
+    }
+    #deleteConfirmPopup p {
+      margin: 0;
+    }
+    #deleteItemText {
+      font-size: 10px;
+      color: #666;
+      margin: 5px 0 10px;
+    }
+    /* Increase scrollbar sensitive area (WebKit only) */
+    ::-webkit-scrollbar {
+      width: 32px; /* Twice the normal width (assuming default is ~16px) */
+    }
   </style>
 </head>
 <body onclick="closeMenu(event)">
   <div id="menu" onclick="toggleMenu(event)">☰</div>
-  <div id="version">0.002</div> <!-- Update version number with each new patch by adding 0.001 -->
+  <div id="version">0.003</div> <!-- Updated version number -->
   <div id="menuDropdown">
     <button onclick="newList()">+ New List</button>
     <button onclick="showLoadListPopup()">+ Load List</button>
@@ -170,6 +194,14 @@
     <button onclick="loadListFromText()">Load</button>
     <button onclick="hideLoadListPopup()">Cancel</button>
   </div>
+  
+  <!-- Custom Delete Confirmation Popup -->
+  <div id="deleteConfirmPopup">
+    <p id="deleteConfirmText" style="font-weight: bold;">Delete this item?</p>
+    <p id="deleteItemText"></p>
+    <button onclick="confirmDelete(true)">Delete</button>
+    <button onclick="confirmDelete(false)">Cancel</button>
+  </div>
 
   <script>
     let currentList = localStorage.getItem("currentList") || "Default List";
@@ -181,6 +213,8 @@
     let mobileDraggingIndex = null;
     // For drag placeholder (the "shadow")
     let dropPlaceholderEl = null;
+    // Pending delete index for custom delete popup
+    let pendingDeleteIndex = null;
 
     // Initialize title, lists, and items
     document.getElementById("listTitle").innerText = currentList;
@@ -351,15 +385,25 @@
         renderItems();
       }
     }
-    function deleteItem(index) {
-      if (confirm("Delete this item?")) {
-        const items = getItems();
-        items.splice(index, 1);
-        saveItems(items);
-        renderItems();
-      }
+    // Use custom delete confirmation instead of native confirm.
+    function showDeleteConfirm(index) {
+      pendingDeleteIndex = index;
+      const items = getItems();
+      const itemText = items[index].text;
+      document.getElementById("deleteConfirmText").innerText = "Delete this item?";
+      document.getElementById("deleteItemText").innerText = itemText;
+      document.getElementById("deleteConfirmPopup").style.display = "block";
     }
-
+    function confirmDelete(confirmed) {
+      if (confirmed && pendingDeleteIndex !== null) {
+         const items = getItems();
+         items.splice(pendingDeleteIndex, 1);
+         saveItems(items);
+         renderItems();
+      }
+      pendingDeleteIndex = null;
+      document.getElementById("deleteConfirmPopup").style.display = "none";
+    }
     // ---------------------------
     // Drag-and-drop (Desktop)
     // ---------------------------
@@ -408,39 +452,34 @@
       const touchStartTime = parseInt(e.currentTarget.dataset.touchStartTime);
       const elapsedTime = Date.now() - touchStartTime;
       const deltaX = touch.clientX - startX;
-      // If a fast flick to the left is detected, delete the item.
+      // If a fast flick to the left is detected, show custom delete popup.
       if (deltaX < -50 && elapsedTime < 300) {
-        if (confirm("Delete this item?")) {
-          deleteItem(index);
+        showDeleteConfirm(index);
+        if (document.getElementById("dropPlaceholder")) {
+          document.getElementById("dropPlaceholder").remove();
         }
-        // Remove any placeholder if present.
-        const placeholder = document.getElementById("dropPlaceholder");
-        if (placeholder) placeholder.remove();
         return;
       }
       // If dragging was active, complete the drop operation.
       if (mobileDraggingIndex !== null) {
-        // Remove the drop placeholder.
-        const placeholder = document.getElementById("dropPlaceholder");
-        if (placeholder) placeholder.remove();
-        let dropElement = document.elementFromPoint(touch.clientX, touch.clientY);
-        let liElements = document.querySelectorAll("#itemList li");
-        let dropIndex = null;
-        liElements.forEach((el, idx) => {
-          if (el.contains(dropElement) && !el.classList.contains("dragging") && el.id !== "dropPlaceholder") {
-            dropIndex = idx;
-          }
-        });
-        if (dropIndex !== null && dropIndex !== mobileDraggingIndex) {
-          const items = getItems();
-          const [movedItem] = items.splice(mobileDraggingIndex, 1);
-          items.splice(dropIndex, 0, movedItem);
-          saveItems(items);
-          renderItems();
-        } else {
-          // Remove dragging class if drop did not change position.
-          e.currentTarget.parentElement.classList.remove("dragging");
+        if (document.getElementById("dropPlaceholder")) {
+          document.getElementById("dropPlaceholder").remove();
         }
+        // Recalculate drop index using the same logic as updateDragPlaceholder.
+        let liElements = Array.from(document.querySelectorAll("#itemList li:not(.dragging):not(#dropPlaceholder)"));
+        let dropIndex = liElements.length;
+        for (let i = 0; i < liElements.length; i++) {
+          let rect = liElements[i].getBoundingClientRect();
+          if (touch.clientY < rect.top + rect.height / 2) {
+            dropIndex = i;
+            break;
+          }
+        }
+        const items = getItems();
+        const [movedItem] = items.splice(mobileDraggingIndex, 1);
+        items.splice(dropIndex, 0, movedItem);
+        saveItems(items);
+        renderItems();
         mobileDraggingIndex = null;
       }
     }
@@ -499,14 +538,11 @@
         li.ondragover = handleDragOver;
         li.ondrop = (e) => handleDrop(e, index);
         li.ondragend = handleDragEnd;
-        // Set background color if item is checked.
         li.style.background = item.checked ? "#d0eaff" : "#fff";
 
-        // Create container for checkbox and item text.
         const contentDiv = document.createElement("div");
         contentDiv.className = "item-content";
         
-        // Checkbox (click stops propagation so that it doesn't trigger drag)
         const checkbox = document.createElement("input");
         checkbox.type = "checkbox";
         checkbox.checked = item.checked;
@@ -515,11 +551,9 @@
           toggleItem(index);
         };
 
-        // Item text span: custom double-tap to edit, long-press (3 sec) to delete.
         const span = document.createElement("span");
         span.className = "item-text";
         span.textContent = item.text;
-        // Custom double-tap detection on mobile for editing.
         span.addEventListener("touchend", function (e) {
           e.preventDefault();
           let currentTime = new Date().getTime();
@@ -531,28 +565,22 @@
           this.dataset.lastTap = currentTime;
           clearTimeout(itemDeleteTimer);
         });
-        // Long-press on item text to delete.
         span.addEventListener("touchstart", function (e) {
           e.preventDefault();
           itemDeleteTimer = setTimeout(() => {
-            if (confirm("Delete this item?")) {
-              deleteItem(index);
-            }
+            showDeleteConfirm(index);
           }, 3000);
         });
         span.addEventListener("touchcancel", function (e) {
           clearTimeout(itemDeleteTimer);
         });
-        // Desktop double-click to edit.
         span.ondblclick = (e) => {
           e.stopPropagation();
           editItem(index);
         };
 
-        // Append checkbox and text to content container.
         contentDiv.appendChild(checkbox);
         contentDiv.appendChild(span);
-        // Create drag-handle element (for mobile dragging) and place on the right.
         const dragHandle = document.createElement("span");
         dragHandle.className = "drag-handle";
         dragHandle.innerText = "≡";
@@ -560,7 +588,6 @@
         dragHandle.addEventListener("touchend", (e) => handleDragTouchEnd(e, index));
         dragHandle.addEventListener("touchmove", (e) => updateDragPlaceholder(e));
         
-        // Append content container then drag-handle to li.
         li.appendChild(contentDiv);
         li.appendChild(dragHandle);
         itemList.appendChild(li);
