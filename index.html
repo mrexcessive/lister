@@ -1,8 +1,8 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Multi-List App</title>
   <style>
     body {
@@ -12,6 +12,7 @@
       text-align: center;
       padding: 10px;
     }
+    /* Menu styles */
     #menu {
       position: absolute;
       top: 10px;
@@ -19,6 +20,7 @@
       font-size: 24px;
       cursor: pointer;
       user-select: none;
+      -webkit-user-select: none;
     }
     #menuDropdown {
       display: none;
@@ -49,6 +51,7 @@
       padding: 0;
       margin: 0;
     }
+    /* List items: disable text selection and default touch actions */
     li {
       display: flex;
       align-items: center;
@@ -59,6 +62,11 @@
       text-align: left;
       word-break: break-word;
       background: #fff;
+      -webkit-user-select: none;
+      -moz-user-select: none;
+      -ms-user-select: none;
+      user-select: none;
+      touch-action: none;
     }
     li.dragging {
       opacity: 0.5;
@@ -68,6 +76,9 @@
       flex: 1;
       padding-left: 10px;
       text-align: left;
+      -webkit-user-select: none;
+      user-select: none;
+      touch-action: none;
     }
     .undo-btn {
       display: none;
@@ -79,6 +90,7 @@
       padding: 5px;
       margin-top: 10px;
     }
+    /* Popup for loading a list from text */
     #loadListPopup {
       display: none;
       position: fixed;
@@ -101,6 +113,8 @@
       font-size: 22px;
       cursor: pointer;
       user-select: none;
+      -webkit-user-select: none;
+      touch-action: none;
     }
   </style>
 </head>
@@ -114,7 +128,7 @@
   </div>
 
   <h2 id="listTitle">My List</h2>
-  <input type="text" id="itemInput" placeholder="Add new item...">
+  <input type="text" id="itemInput" placeholder="Add new item..." />
   <button onclick="addItem()">Add</button>
   <ul id="itemList"></ul>
   <button id="undoBtn" class="undo-btn" onclick="undoClearCheckboxes()">Undo</button>
@@ -134,13 +148,13 @@
     let mobileDraggingIndex = null;
     let mobileDragStartY = 0;
 
-    // Initialize title and lists/items
+    // Initialize title, lists, and items
     document.getElementById("listTitle").innerText = currentList;
     loadLists();
     renderItems();
 
-    // Add item on Enter key in input
-    document.getElementById("itemInput").addEventListener("keypress", function(event) {
+    // Add item on Enter key
+    document.getElementById("itemInput").addEventListener("keypress", function (event) {
       if (event.key === "Enter") {
         event.preventDefault();
         addItem();
@@ -153,7 +167,7 @@
     function toggleMenu(event) {
       event.stopPropagation();
       const menu = document.getElementById("menuDropdown");
-      menu.style.display = menu.style.display === "block" ? "none" : "block";
+      menu.style.display = (menu.style.display === "block") ? "none" : "block";
     }
     function closeMenu(event) {
       const menu = document.getElementById("menuDropdown");
@@ -177,9 +191,13 @@
       document.getElementById("loadListPopup").style.display = "none";
     }
     function loadListFromText() {
-      const text = document.getElementById("loadListInput").value.trim();
+      const text = document.getElementById("loadListInput").value;
       if (text) {
-        const items = text.split("\n").map(line => ({ text: line.trim(), checked: false }));
+        // Split lines, trim, and ignore blank ones
+        const items = text.split("\n")
+          .map(line => line.trim())
+          .filter(line => line.length > 0)
+          .map(line => ({ text: line, checked: false }));
         saveItems(items);
         renderItems();
       }
@@ -201,7 +219,7 @@
         if (index !== -1) {
           lists[index] = newName;
           saveLists(lists);
-          // Migrate stored items
+          // Migrate stored items to new key
           localStorage.setItem(`items_${newName}`, localStorage.getItem(`items_${currentList}`));
           localStorage.removeItem(`items_${currentList}`);
           switchList(newName);
@@ -338,7 +356,8 @@
     // Mobile Drag-and-drop Simulation
     // ---------------------------
     function handleTouchStart(e, index) {
-      // If touch is not on the text span (so not deletion), start drag timer
+      e.preventDefault();
+      // Only initiate drag if not touching the text (which has its own handlers)
       if (e.target.tagName !== "SPAN") {
         mobileDragTimer = setTimeout(() => {
           mobileDraggingIndex = index;
@@ -371,7 +390,7 @@
     }
 
     // ---------------------------
-    // Render Items with Drag, Edit, and Delete (via long press)
+    // Render Items with Drag, Edit, and Delete (using custom double-tap and long-press)
     // ---------------------------
     function renderItems() {
       const itemList = document.getElementById("itemList");
@@ -387,7 +406,7 @@
         li.ontouchstart = (e) => handleTouchStart(e, index);
         li.ontouchend = (e) => handleTouchEnd(e, index);
 
-        // Checkbox (clicking stops propagation so it doesn’t trigger drag)
+        // Checkbox (click stops propagation)
         const checkbox = document.createElement("input");
         checkbox.type = "checkbox";
         checkbox.checked = item.checked;
@@ -396,23 +415,37 @@
           toggleItem(index);
         };
 
-        // Item text span: double-tap to edit, long‑press (3 sec) to delete
+        // Item text span: custom double-tap to edit, long-press (3 sec) to delete.
         const span = document.createElement("span");
         span.textContent = item.text;
-        span.ondblclick = (e) => {
-          e.stopPropagation();
-          editItem(index);
-        };
-        span.ontouchstart = (e) => {
-          // Start timer for deletion on item text
+        // Custom double-tap detection on mobile
+        span.addEventListener("touchend", function (e) {
+          e.preventDefault();
+          let currentTime = new Date().getTime();
+          let lastTap = this.dataset.lastTap || 0;
+          if (currentTime - lastTap < 300) {
+            clearTimeout(itemDeleteTimer);
+            editItem(index);
+          }
+          this.dataset.lastTap = currentTime;
+          clearTimeout(itemDeleteTimer);
+        });
+        // Long-press (3 sec) to delete item
+        span.addEventListener("touchstart", function (e) {
+          e.preventDefault();
           itemDeleteTimer = setTimeout(() => {
             if (confirm("Delete this item?")) {
               deleteItem(index);
             }
           }, 3000);
-        };
-        span.ontouchend = (e) => {
+        });
+        span.addEventListener("touchcancel", function (e) {
           clearTimeout(itemDeleteTimer);
+        });
+        // Desktop double-click to edit
+        span.ondblclick = (e) => {
+          e.stopPropagation();
+          editItem(index);
         };
 
         li.appendChild(checkbox);
@@ -422,22 +455,32 @@
     }
 
     // ---------------------------
-    // List name events: double-tap to edit, long‑press (3 sec) to delete list
+    // List title events: custom double-tap to edit, long-press (3 sec) to delete list
     // ---------------------------
     const listTitle = document.getElementById("listTitle");
+    listTitle.addEventListener("touchend", function (e) {
+      e.preventDefault();
+      let currentTime = new Date().getTime();
+      let lastTap = this.dataset.lastTap || 0;
+      if (currentTime - lastTap < 300) {
+        clearTimeout(listDeleteTimer);
+        editListName();
+      }
+      this.dataset.lastTap = currentTime;
+    });
+    listTitle.addEventListener("touchstart", function (e) {
+      e.preventDefault();
+      listDeleteTimer = setTimeout(() => {
+        deleteList();
+      }, 3000);
+    });
+    listTitle.addEventListener("touchcancel", function (e) {
+      clearTimeout(listDeleteTimer);
+    });
     listTitle.ondblclick = (e) => {
       e.stopPropagation();
       editListName();
     };
-    listTitle.ontouchstart = (e) => {
-      listDeleteTimer = setTimeout(() => {
-        deleteList();
-      }, 3000);
-    };
-    listTitle.ontouchend = (e) => {
-      clearTimeout(listDeleteTimer);
-    };
-
   </script>
 </body>
 </html>
