@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <!-- Allow zooming for text entry; will be reset programmatically on blur -->
+  <!-- Allow zooming during editing; we will force reset after editing -->
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=3.0" />
   <title>Multi-List App</title>
   <style>
@@ -13,6 +13,7 @@
       text-align: center;
       padding: 10px;
       position: relative;
+      -webkit-touch-callout: none; /* disable callout, etc. */
     }
     /* Version number styling */
     #version {
@@ -69,7 +70,7 @@
       padding: 0;
       margin: 0;
     }
-    /* List items – allow vertical panning for scrolling */
+    /* List items – allow vertical panning */
     li {
       display: flex;
       align-items: center;
@@ -82,11 +83,17 @@
       background: #fff;
       user-select: none;
       touch-action: pan-y;
-      /* Transition for smooth transform resetting */
       transition: transform 0.1s;
     }
-    li.dragging-active {
+    /* Visual indication for dragging mode */
+    .dragging-active {
       border: 2px solid red;
+      opacity: 0.9;
+    }
+    /* Placeholder style for drag */
+    .drag-placeholder {
+      background: #f0f0f0;
+      border: 2px dashed #aaa;
     }
     /* Container for checkbox and text label */
     .item-content {
@@ -108,7 +115,6 @@
       user-select: none;
       touch-action: pan-y;
     }
-    /* (Drag handle removed) */
     .undo-btn {
       display: none;
       background: orange;
@@ -177,7 +183,7 @@
 <body onclick="closeMenu(event)">
   <div id="menu" onclick="toggleMenu(event)">☰</div>
   <!-- Updated version number -->
-  <div id="version">0.009</div>
+  <div id="version">0.010</div>
 
   <div id="menuDropdown">
     <button onclick="newList()">+ New List</button>
@@ -210,34 +216,44 @@
   </div>
 
   <script>
-    // Global variables
+    /* ================================
+       Global Variables and Initialization
+       ================================ */
     let currentList = localStorage.getItem("currentList") || "Default List";
     let previousCheckboxState = null;
     let listDeleteTimer = null;
     let itemDeleteTimer = null;
-    // For dragging via long press
-    let mobileDraggingIndex = null;
-    // To ensure only one editing field is active at any time.
+    // For in-place editing – ensure only one input active at once.
     let currentEditingInput = null;
+    // For drag-and-drop via long press:
+    let draggedItemIndex = null;
+    let draggedElement = null;
+    let dragPlaceholder = null;
 
-    // Initialize title, lists, and items
+    // Initialize title, lists, and items.
     document.getElementById("listTitle").innerText = currentList;
     loadLists();
     renderItems();
 
-    // ---------------------------
-    // Utility: Reset viewport zoom to 100%
-    // ---------------------------
+    /* ================================
+       Utility: Reset Zoom
+       ================================ */
     function resetZoom() {
-      var viewport = document.querySelector("meta[name=viewport]");
+      // Remove the existing viewport meta tag.
+      let viewport = document.querySelector("meta[name=viewport]");
       if (viewport) {
-        viewport.setAttribute("content", "width=device-width, initial-scale=1, maximum-scale=1");
+        viewport.parentNode.removeChild(viewport);
       }
+      // Create a new viewport meta tag with fixed scale.
+      let meta = document.createElement("meta");
+      meta.name = "viewport";
+      meta.content = "width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no";
+      document.getElementsByTagName("head")[0].appendChild(meta);
     }
 
-    // ---------------------------
-    // Menu and List management
-    // ---------------------------
+    /* ================================
+       Menu and List Management Functions
+       ================================ */
     function toggleMenu(event) {
       event.stopPropagation();
       const menu = document.getElementById("menuDropdown");
@@ -385,9 +401,9 @@
       });
     }
 
-    // ---------------------------
-    // Item management functions
-    // ---------------------------
+    /* ================================
+       Item Management Functions
+       ================================ */
     function getItems() {
       return JSON.parse(localStorage.getItem(`items_${currentList}`)) || [];
     }
@@ -419,7 +435,6 @@
         resetZoom();
         const newText = input.value.trim();
         if (newText === "") {
-          // If originally empty, remove the item; otherwise revert.
           if (originalText === "") {
             items.splice(index, 1);
           } else {
@@ -433,7 +448,7 @@
         currentEditingInput = null;
       };
       currentEditingInput = input;
-      // Replace the label within its container.
+      // Replace the label element with the input.
       labelElement.parentElement.replaceChild(input, labelElement);
       input.focus();
     }
@@ -472,120 +487,83 @@
       }, 0);
     }
 
-    // ---------------------------
-    // Drag-and-drop for desktop (not used on mobile)
-    // ---------------------------
-    let draggedIndex = null;
-    function handleDragStart(e, index) {
-      draggedIndex = index;
-      e.target.classList.add("dragging-active");
+    /* ================================
+       Long-Press Drag-and-Drop (No Drag Handle)
+       ================================ */
+    // Global variables for drag-and-drop:
+    let pendingDeleteIndex = null; // already used above
+    // startDrag creates a floating clone and a placeholder.
+    function startDrag(li, index) {
+      li.isDragging = true;
+      draggedItemIndex = index;
+      let rect = li.getBoundingClientRect();
+      // Create a floating clone of the li.
+      draggedElement = li.cloneNode(true);
+      draggedElement.style.position = "absolute";
+      draggedElement.style.top = (rect.top + window.scrollY) + "px";
+      draggedElement.style.left = (rect.left + window.scrollX) + "px";
+      draggedElement.style.width = rect.width + "px";
+      draggedElement.classList.add("dragging-active");
+      // Disable text selection on the clone.
+      draggedElement.style.pointerEvents = "none";
+      document.body.appendChild(draggedElement);
+      // Create a placeholder with the same height.
+      dragPlaceholder = document.createElement("li");
+      dragPlaceholder.classList.add("drag-placeholder");
+      dragPlaceholder.style.height = rect.height + "px";
+      // Replace li with placeholder in the list.
+      li.parentElement.replaceChild(dragPlaceholder, li);
     }
-    function handleDragOver(e) {
-      e.preventDefault();
+    // updateDrag continuously repositions the floating element and repositions the placeholder.
+    function updateDrag(touch) {
+      // Prevent text selection and scrolling while dragging.
+      event.preventDefault();
+      draggedElement.style.top = (touch.clientY + window.scrollY - draggedElement.offsetHeight/2) + "px";
+      // Recalculate the drop index based on current touch Y.
+      const itemList = document.getElementById("itemList");
+      const listItems = Array.from(itemList.querySelectorAll("li:not(.footer-bar):not(.drag-placeholder)"));
+      let newIndex = 0;
+      for (let i = 0; i < listItems.length; i++) {
+        let rect = listItems[i].getBoundingClientRect();
+        if (touch.clientY < rect.top + rect.height/2) {
+          newIndex = i;
+          break;
+        }
+        newIndex = i + 1;
+      }
+      // Move the placeholder if needed.
+      let currentPlaceholderIndex = Array.from(itemList.children).indexOf(dragPlaceholder);
+      if (newIndex !== currentPlaceholderIndex) {
+        itemList.removeChild(dragPlaceholder);
+        if (newIndex >= itemList.children.length) {
+          itemList.appendChild(dragPlaceholder);
+        } else {
+          itemList.insertBefore(dragPlaceholder, itemList.children[newIndex]);
+        }
+      }
     }
-    function handleDrop(e, dropIndex) {
-      e.preventDefault();
-      if (draggedIndex === null) return;
-      const items = getItems();
-      const [movedItem] = items.splice(draggedIndex, 1);
+    // endDrag finalizes the drop: removes floating element, updates the array, and re-renders.
+    function endDrag(touch) {
+      if (draggedElement) {
+        document.body.removeChild(draggedElement);
+        draggedElement = null;
+      }
+      const itemList = document.getElementById("itemList");
+      let dropIndex = Array.from(itemList.children).indexOf(dragPlaceholder);
+      itemList.removeChild(dragPlaceholder);
+      dragPlaceholder = null;
+      // Update array: remove item from draggedItemIndex and insert at dropIndex.
+      let items = getItems();
+      let [movedItem] = items.splice(draggedItemIndex, 1);
       items.splice(dropIndex, 0, movedItem);
       saveItems(items);
       renderItems();
-      draggedIndex = null;
-    }
-    function handleDragEnd(e) {
-      e.target.classList.remove("dragging-active");
-      draggedIndex = null;
+      draggedItemIndex = null;
     }
 
-    // ---------------------------
-    // Long press drag implementation on list items
-    // ---------------------------
-    // For each li (list item), we now attach touch listeners for dragging.
-    // A long press (500ms) starts the drag mode, which highlights the row (red border)
-    // and lets the user move the row vertically. On touchend, the drop index is computed.
-    function addDragListeners(li, index) {
-      li.addEventListener("touchstart", function(e) {
-        this.dataset.startX = e.touches[0].clientX;
-        this.dataset.startY = e.touches[0].clientY;
-        this.dataset.touchStartTime = Date.now();
-        // Start long press timer for dragging.
-        this.dragTimeout = setTimeout(() => {
-          this.isDragging = true;
-          mobileDraggingIndex = index;
-          this.classList.add("dragging-active");
-        }, 500);
-      });
-      li.addEventListener("touchmove", function(e) {
-        // If movement is significant before long press, cancel drag.
-        const currentX = e.touches[0].clientX;
-        const currentY = e.touches[0].clientY;
-        const deltaX = currentX - parseFloat(this.dataset.startX || 0);
-        const deltaY = currentY - parseFloat(this.dataset.startY || 0);
-        if (!this.isDragging && (Math.abs(deltaX) > 10 || Math.abs(deltaY) > 10)) {
-          clearTimeout(this.dragTimeout);
-        }
-        if (this.isDragging) {
-          // Update visual position with transform.
-          this.style.transform = `translateY(${deltaY}px)`;
-        }
-      });
-      li.addEventListener("touchend", function(e) {
-        clearTimeout(this.dragTimeout);
-        if (this.isDragging) {
-          // Finish dragging.
-          this.style.transform = "";
-          this.classList.remove("dragging-active");
-          this.isDragging = false;
-          let touch = e.changedTouches[0];
-          let liElements = Array.from(document.querySelectorAll("#itemList li:not(.footer-bar)"));
-          // Exclude the dragged element.
-          let dropIndex = liElements.length - 1;
-          for (let i = 0; i < liElements.length - 1; i++) {
-            let rect = liElements[i].getBoundingClientRect();
-            if (touch.clientY < rect.top + rect.height/2) {
-              dropIndex = i;
-              break;
-            }
-          }
-          const items = getItems();
-          const [movedItem] = items.splice(mobileDraggingIndex, 1);
-          items.splice(dropIndex, 0, movedItem);
-          saveItems(items);
-          renderItems();
-          mobileDraggingIndex = null;
-          return;
-        }
-        // If not dragging, proceed with other gestures.
-        const currentTime = Date.now();
-        const startX = parseFloat(this.dataset.startX || 0);
-        const startY = parseFloat(this.dataset.startY || 0);
-        const touch = e.changedTouches[0];
-        const elapsed = currentTime - parseInt(this.dataset.touchStartTime || currentTime);
-        const deltaX = touch.clientX - startX;
-        const deltaY = touch.clientY - startY;
-        if (this.dataset.lastTap && (currentTime - parseInt(this.dataset.lastTap)) < 300 &&
-            Math.abs(deltaX) < 10 && Math.abs(deltaY) < 10) {
-          editItem(index, this.querySelector(".item-text"));
-          this.dataset.lastTap = "";
-          return;
-        } else {
-          this.dataset.lastTap = currentTime;
-        }
-        if (deltaX < -50 && elapsed < 300) {
-          showDeleteConfirm(index);
-          return;
-        }
-        if (deltaX > 50 && elapsed < 300) {
-          insertNewItem(index + 1);
-          return;
-        }
-      });
-    }
-
-    // ---------------------------
-    // Global flick detection on the list container (for adding items when tapping outside any li)
-    // ---------------------------
+    /* ================================
+       Global Flick Detection on the List Container (for adding items)
+       ================================ */
     const itemListContainer = document.getElementById("itemList");
     itemListContainer.addEventListener("touchstart", function(e) {
       if (e.target === this) {
@@ -626,18 +604,17 @@
       return touchY > centerY ? closestIndex + 1 : closestIndex;
     }
 
-    // ---------------------------
-    // Render Items – attach touch/double-tap and long press drag listeners on each li.
-    // ---------------------------
+    /* ================================
+       Render Items and Attach Touch Listeners
+       ================================ */
     function renderItems() {
       const itemList = document.getElementById("itemList");
       itemList.innerHTML = "";
       const items = getItems();
       items.forEach((item, index) => {
         const li = document.createElement("li");
-        li.draggable = false;
         li.style.background = item.checked ? "#d0eaff" : "#fff";
-
+        li.draggable = false;
         // Create content container (checkbox and label)
         const contentDiv = document.createElement("div");
         contentDiv.className = "item-content";
@@ -655,51 +632,36 @@
         contentDiv.appendChild(span);
         li.appendChild(contentDiv);
 
-        // Attach touch listeners (for double-tap, flick, and long-press dragging)
+        // Attach touch listeners for gesture handling and long-press drag.
         li.addEventListener("touchstart", function(e) {
           this.dataset.startX = e.touches[0].clientX;
           this.dataset.startY = e.touches[0].clientY;
           this.dataset.touchStartTime = Date.now();
+          // Set a long-press timer for dragging.
           this.dragTimeout = setTimeout(() => {
-            this.isDragging = true;
-            mobileDraggingIndex = index;
-            this.classList.add("dragging-active");
+            startDrag(this, index);
           }, 500);
         });
         li.addEventListener("touchmove", function(e) {
+          // If dragging, update drag position.
+          if (this.isDragging) {
+            updateDrag(e.touches[0]);
+            return;
+          }
           const currentX = e.touches[0].clientX;
           const currentY = e.touches[0].clientY;
           const deltaX = currentX - parseFloat(this.dataset.startX || 0);
           const deltaY = currentY - parseFloat(this.dataset.startY || 0);
-          if (!this.isDragging && (Math.abs(deltaX) > 10 || Math.abs(deltaY) > 10)) {
+          if (Math.abs(deltaX) > 10 || Math.abs(deltaY) > 10) {
             clearTimeout(this.dragTimeout);
-          }
-          if (this.isDragging) {
-            this.style.transform = `translateY(${deltaY}px)`;
           }
         });
         li.addEventListener("touchend", function(e) {
           clearTimeout(this.dragTimeout);
+          // If this li is in dragging mode, finalize the drag.
           if (this.isDragging) {
-            this.style.transform = "";
-            this.classList.remove("dragging-active");
+            endDrag(e.changedTouches[0]);
             this.isDragging = false;
-            let touch = e.changedTouches[0];
-            let liElements = Array.from(document.querySelectorAll("#itemList li:not(.footer-bar)"));
-            let dropIndex = liElements.length - 1;
-            for (let i = 0; i < liElements.length - 1; i++) {
-              let rect = liElements[i].getBoundingClientRect();
-              if (touch.clientY < rect.top + rect.height/2) {
-                dropIndex = i;
-                break;
-              }
-            }
-            const items = getItems();
-            const [movedItem] = items.splice(mobileDraggingIndex, 1);
-            items.splice(dropIndex, 0, movedItem);
-            saveItems(items);
-            renderItems();
-            mobileDraggingIndex = null;
             return;
           }
           const currentTime = Date.now();
@@ -729,11 +691,9 @@
         li.ondblclick = function(e) {
           editItem(index, this.querySelector(".item-text"));
         };
-
-        // Append the li to the list.
         itemList.appendChild(li);
       });
-      // Append a full-width pale grey footer bar.
+      // Append footer bar.
       const footer = document.createElement("li");
       footer.className = "footer-bar";
       footer.style.border = "none";
@@ -741,9 +701,9 @@
       itemList.appendChild(footer);
     }
 
-    // ---------------------------
-    // List title events: double-tap (or double-click) to edit the title, long-press to delete list.
-    // ---------------------------
+    /* ================================
+       List Title Touch Handling
+       ================================ */
     const listTitle = document.getElementById("listTitle");
     listTitle.addEventListener("touchstart", function (e) {
       e.preventDefault();
